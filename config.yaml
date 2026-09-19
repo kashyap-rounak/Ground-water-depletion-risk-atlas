@@ -1,0 +1,113 @@
+# ============================================================
+# Groundwater Depletion Risk Atlas - Configuration
+# ============================================================
+# HOW TO USE YOUR REAL DATA:
+#   1. Set `data.source` to "local" below.
+#   2. Set `data.local_path` to the folder (or single file) with your
+#      station-level groundwater/rainfall readings (CSV or Excel).
+#      ... or simply copy the files into  data/raw/
+#
+# The loader auto-detects file types and maps your column names via
+# the alias lists in `column_aliases`. Add your exact header names
+# there if auto-mapping misses anything.
+# ============================================================
+
+data:
+  # "synthetic"  -> generate realistic demo data (works offline, no files needed)
+  # "local"      -> read your real files
+  source: synthetic
+  # Folder or file path. If empty, defaults to data/raw/
+  local_path: ""
+  # Fallback to synthetic if local files are missing/empty (keeps pipeline running)
+  allow_synthetic_fallback: true
+
+  # Date range used when generating synthetic data
+  synthetic:
+    start_year: 2000
+    end_year: 2024
+    n_districts: 60
+
+  # Canonical column names the pipeline expects after mapping
+  canonical:
+    district: district
+    state: state
+    station_id: station_id
+    date: date            # observation date (any parseable format)
+    level: level_mbgl     # groundwater level in metres below ground level
+    rainfall: rainfall_mm
+    latitude: latitude
+    longitude: longitude
+
+  # Your file's column names -> canonical names. First match wins.
+  # Add your exact header spellings here if ingestion misses a column.
+  column_aliases:
+    district: [district, district_name, districts, dist_name, name_of_district, "district name"]
+    state: [state, state_name, state_ut, "state/ut"]
+    station_id: [station_id, station, well_id, site_id, site, station code, "station code", sno, s_no]
+    date: [date, observation_date, obs_date, measurement_date, "date_of_observation", "date of measurement", "date of observation", year, season_date]
+    level: [level_mbgl, water_level, groundwater_level, gw_level, level, depth_to_water, "water level (mbgl)", "pre-monsoon", "post-monsoon", dtw]
+    rainfall: [rainfall_mm, rainfall, rain, precipitation, "rainfall (mm)", annual_rainfall]
+    latitude: [latitude, lat, y, "lat"]
+    longitude: [longitude, lon, long, x, "long"]
+
+  cleaning:
+    level_min_mbgl: 0.0        # water level physically can't be negative
+    level_max_mbgl: 120.0      # sanity cap (deepest recorded levels)
+    rainfall_min_mm: 0.0
+    rainfall_max_mm: 5000.0    # daily/seasonal sanity cap
+    level_zscore: 4.0          # IQR*multiplier outlier fence within a district
+    iqr_multiplier: 3.0
+    interpolate: true          # time-interpolate gaps within each district series
+
+  seasons:
+    pre_monsoon_months: [3, 4, 5]     # Mar-May
+    post_monsoon_months: [10, 11, 12] # Oct-Dec
+
+features:
+  rainfall_rolling_years: 3
+  gw_lag_seasons: [1, 2, 4]   # 1, 2 and 4 seasons back
+  yoy_change_seasons: 2       # seasons back for same-season YoY change
+
+sarima:
+  order: [1, 1, 1]
+  seasonal_order: [0, 1, 1, 2]  # s=2 because 2 seasons per year (pre/post)
+  forecast_years: 3
+  max_districts: 0              # 0 = all districts
+
+xgboost:
+  test_seasons: 12              # last N seasons held out for evaluation
+  n_estimators: 600
+  learning_rate: 0.03
+  max_depth: 5
+  subsample: 0.85
+  colsample_bytree: 0.85
+  reg_lambda: 1.0
+  early_stopping_rounds: 50
+
+risk:
+  # Risk label thresholds on predicted YoY decline (m/yr) and trend slope (m/yr)
+  labels: [Low, Moderate, High, Very High]
+  decline_m_per_year:
+    moderate: 0.10
+    high: 0.30
+    very_high: 0.60
+  classifier:
+    n_estimators: 350
+    learning_rate: 0.06
+    max_depth: 4
+
+shap:
+  max_background: 200
+  max_display: 12
+
+paths:
+  raw: data/raw
+  processed: data/processed
+  geo: data/geo
+  artifacts: models/artifacts
+  figures: reports/figures
+
+geo:
+  # India district boundaries GeoJSON source (cached into data/geo/)
+  boundaries_url: "https://raw.githubusercontent.com/geohacker/india/master/district/india_district.geojson" # geohacker india districts (has DISTRICT + ST_NM props)
+  fallback_centroids: true
