@@ -11,12 +11,14 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+!data/processed/*.parquet
 data/geo/*
 !data/geo/.gitkeep
 
 !models/artifacts/.gitkeep
 reports/figures/*
 !reports/figures/.gitkeep
+!reports/figures/risk_map.geojson
 
 # OS / IDE
 .DS_Store
