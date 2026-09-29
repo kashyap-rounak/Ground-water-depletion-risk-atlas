@@ -28,6 +28,26 @@ geographically, and presents the results through an interactive Streamlit dashbo
    📈 Groundwater Trends · 🔮 Future Forecast · ⚠️ At-Risk Districts · 🌧️ Rainfall Analysis ·
    🤖 Model Performance & SHAP.
 
+## 🎬 Run for a presentation (models already trained)
+
+If `models/artifacts/` is already populated, you only need the dashboard. Open a
+terminal in VS Code (`` Ctrl+` ``) and run these in order:
+
+```powershell
+cd "D:\Ground water depletion risk atlas"   # 1. go to the project folder
+.venv\Scripts\activate                      # 2. activate the virtual environment
+streamlit run src/app/app.py                # 3. launch the dashboard
+```
+
+The browser opens automatically at `http://localhost:8501`. To stop after the demo:
+click the terminal → `Ctrl+C` → `deactivate`.
+
+To retrain everything first (optional, ~2–3 min, **not** recommended live on stage):
+
+```powershell
+python scripts/run_pipeline.py
+```
+
 ## Quickstart
 
 ```bash
