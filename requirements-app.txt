@@ -1,0 +1,7 @@
+# Slim dependencies for the Streamlit dashboard only (used by cloud deploys).
+# The full ML pipeline stack lives in requirements.txt.
+numpy>=1.26
+pandas>=2.0
+plotly>=5.20
+streamlit>=1.36
+pyyaml>=6.0
