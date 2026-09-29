@@ -13,7 +13,7 @@ data/processed/*
 !data/processed/.gitkeep
 data/geo/*
 !data/geo/.gitkeep
-models/artifacts/*
+
 !models/artifacts/.gitkeep
 reports/figures/*
 !reports/figures/.gitkeep

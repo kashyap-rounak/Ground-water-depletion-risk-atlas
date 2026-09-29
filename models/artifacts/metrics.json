@@ -1,0 +1,49 @@
+{
+  "xgboost": {
+    "mae": 0.378540070421166,
+    "rmse": 0.5025627885846441,
+    "r2": 0.9987179795713782,
+    "baseline_persistence_mae": 0.441888888888889,
+    "cv_mae_mean": 0.9507064709173667,
+    "cv_rmse_mean": 2.1371689511382863,
+    "cv_r2_mean": 0.9685167490790418
+  },
+  "sarima_backtest": {
+    "mae": 0.31104594287325027,
+    "rmse": 0.3839586075932404,
+    "r2": 0.9991636434455359
+  },
+  "risk_classifier_report": "              precision    recall  f1-score   support\n\n         Low       1.00      0.50      0.67         2\n    Moderate       0.67      1.00      0.80         2\n        High       1.00      1.00      1.00         6\n   Very High       1.00      1.00      1.00         5\n\n    accuracy                           0.93        15\n   macro avg       0.92      0.88      0.87        15\nweighted avg       0.96      0.93      0.93        15\n",
+  "confusion_matrix": [
+    [
+      1,
+      1,
+      0,
+      0
+    ],
+    [
+      0,
+      2,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      6,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      5
+    ]
+  ],
+  "risk_label_counts": {
+    "High": 23,
+    "Very High": 19,
+    "Moderate": 9,
+    "Low": 9
+  }
+}

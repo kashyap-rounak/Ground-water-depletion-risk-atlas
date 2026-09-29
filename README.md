@@ -1,6 +1,5 @@
 # 🌍 Groundwater Depletion Risk Atlas
 
-An ML-powered web application that analyzes historical groundwater and rainfall data,
 predicts future groundwater conditions, classifies depletion risk, visualizes it
 geographically, and presents the results through an interactive Streamlit dashboard.
 
