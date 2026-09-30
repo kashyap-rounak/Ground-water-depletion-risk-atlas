@@ -1,7 +1,10 @@
 # 🌍 Groundwater Depletion Risk Atlas
 
+An ML-powered web application that analyzes historical groundwater and rainfall data,
 predicts future groundwater conditions, classifies depletion risk, visualizes it
 geographically, and presents the results through an interactive Streamlit dashboard.
+
+> 🔴 **Live demo:** [ground-water-depletion-risk-atlas.streamlit.app](https://ground-water-depletion-risk-atlas.streamlit.app)
 
 ## What it does
 
@@ -72,6 +75,26 @@ Run tests:
 
 ```bash
 .venv\Scripts\python -m pytest tests -q
+```
+
+## ☁️ Deployment (Streamlit Community Cloud)
+
+The app is live at **https://ground-water-depletion-risk-atlas.streamlit.app**.
+
+- **Every `git push` to `main` redeploys the cloud app automatically** — no extra steps.
+- The cloud build installs the slim `requirements-app.txt` (dashboard-only dependencies:
+  numpy, pandas, plotly, streamlit, pyyaml) and reads the tracked
+  `data/processed/*.parquet` + `reports/figures/risk_map.geojson`.
+- After retraining with new data, commit the refreshed parquets/GeoJSON and push —
+  the live app updates itself.
+
+Sync your changes to GitHub (which also redeploys the cloud app):
+
+```bash
+git status                                # see what changed
+git add .                                 # stage the changes
+git commit -m "describe the change"       # save a checkpoint
+git push origin main                      # upload → live app redeploys
 ```
 
 ## 🔑 Using YOUR real data
