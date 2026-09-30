@@ -31,6 +31,11 @@ geographically, and presents the results through an interactive Streamlit dashbo
    📈 Groundwater Trends · 🔮 Future Forecast · ⚠️ At-Risk Districts · 🌧️ Rainfall Analysis ·
    🤖 Model Performance & SHAP.
 
+## 🧠 Tech stack
+
+Python · NumPy · Pandas · Scikit-learn · XGBoost · Statsmodels (SARIMA) · SHAP ·
+GeoPandas · Plotly · Streamlit · PyYAML
+
 ## 🎬 Run for a presentation (models already trained)
 
 If `models/artifacts/` is already populated, you only need the dashboard. Open a
@@ -44,6 +49,9 @@ streamlit run src/app/app.py                # 3. launch the dashboard
 
 The browser opens automatically at `http://localhost:8501`. To stop after the demo:
 click the terminal → `Ctrl+C` → `deactivate`.
+
+> 💡 **Golden rule:** if a command says `python is not recognized` or `No module named
+> streamlit`, you forgot step 2 — activate the venv first.
 
 To retrain everything first (optional, ~2–3 min, **not** recommended live on stage):
 
@@ -135,9 +143,13 @@ src/models/                  # sarima, xgboost_model, risk, evaluate, explain (S
 src/geo/geo.py               # boundaries, name matching, centroids
 src/app/app.py               # Streamlit dashboard
 tests/                       # pytest: cleaning, aggregation, features
-data/raw|processed|geo       # data (gitignored)
-models/artifacts             # trained models, forecasts, metrics (gitignored)
-reports/figures              # saved EDA html + risk_map.geojson
+requirements-app.txt         # slim deps for the cloud deploy (dashboard only)
+.streamlit/config.toml       # dashboard theme
+
+data/raw|geo                 # raw data + boundary cache (gitignored; geo auto-downloads)
+data/processed/*.parquet     # cleaned tables — TRACKED (the cloud app reads these)
+models/artifacts             # trained models, forecasts, metrics — TRACKED
+reports/figures              # risk_map.geojson — TRACKED (EDA html is gitignored)
 ```
 
 ## Metrics snapshot (demo data)
