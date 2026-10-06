@@ -9,6 +9,7 @@ import json
 import logging
 import pickle
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -178,8 +179,27 @@ def main() -> None:
         )
     logger.info("Metrics written to %s", art / "metrics.json")
 
+    manifest = {
+        "schema_version": 1,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "source_used": source_used,
+        "row_counts": {
+            "station_raw": int(len(raw)),
+            "station_clean": int(len(clean)),
+            "district_seasons": int(len(levels)),
+            "districts": int(district_summary["district"].nunique()),
+        },
+    }
+    manifest_path = art / "atlas_manifest.json"
+    temporary_manifest = manifest_path.with_suffix(".tmp")
+    temporary_manifest.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    temporary_manifest.replace(manifest_path)
+    logger.info("Run manifest written to %s", manifest_path)
+
     # ---------------- 11. geo -------------------------------------------------
-    build_centroids(cfg, clean)
+    station_centroids = build_centroids(cfg, clean)
+    station_centroids.to_parquet(proc / "district_centroids_geo.parquet", index=False)
+    logger.info("Saved station-based centroids for %d districts", len(station_centroids))
     gdf = load_boundaries(cfg)
     if gdf is not None:
         merged, unmatched, centroids = match_predictions(district_summary, gdf)

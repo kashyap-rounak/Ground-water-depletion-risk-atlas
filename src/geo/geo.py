@@ -132,7 +132,11 @@ def match_predictions(
     unmatched = p[~p["district_norm"].isin(matched_names)]
     centroids = None
     if len(g1):
-        cent = g1.geometry.centroid
+        geometry = gpd.GeoSeries(g1["geometry"].values, crs=gdf.crs)
+        projected = geometry.to_crs(
+            "+proj=aeqd +lat_0=22.8 +lon_0=80 +datum=WGS84 +units=m +no_defs"
+        )
+        cent = projected.centroid.to_crs("EPSG:4326")
         centroids = pd.DataFrame(
             {
                 "district": g1["district"].values,
