@@ -45,7 +45,7 @@ data:
     state: [state, state_name, state_ut, "state/ut"]
     station_id: [station_id, station, well_id, site_id, site, station code, "station code", sno, s_no]
     date: [date, observation_date, obs_date, measurement_date, "date_of_observation", "date of measurement", "date of observation", year, season_date]
-    level: [level_mbgl, water_level, groundwater_level, gw_level, level, depth_to_water, "water level (mbgl)", "pre-monsoon", "post-monsoon", dtw]
+    level: [level_mbgl, water_level, groundwater_level, gw_level, level, depth_to_water, "water level (mbgl)", dtw]
     rainfall: [rainfall_mm, rainfall, rain, precipitation, "rainfall (mm)", annual_rainfall]
     latitude: [latitude, lat, y, "lat"]
     longitude: [longitude, lon, long, x, "long"]

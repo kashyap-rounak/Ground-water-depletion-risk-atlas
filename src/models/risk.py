@@ -15,11 +15,9 @@ import pandas as pd
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
+from src.risk_categories import LABELS, LABEL_TO_INT
 
 logger = logging.getLogger(__name__)
-
-LABELS = ["Low", "Moderate", "High", "Very High"]
-LABEL_TO_INT = {lab: i for i, lab in enumerate(LABELS)}
 
 
 def assign_risk_labels(
@@ -55,9 +53,10 @@ def train_risk_classifier(
     Returns (model, report_text, confusion, feature_names, class_order).
     The model predicts risk_score (0..3) from hydrological features.
     """
+    # These inputs avoid directly reusing the forecast/trend signals that
+    # define the rule-derived labels, so the report measures surrogate fit.
     feature_cols = [
-        "level_mbgl", "predicted_decline_m_per_year", "trend_slope",
-        "annual_rainfall_mm", "rainfall_rolling3y", "season_flag",
+        "level_mbgl", "annual_rainfall_mm", "rainfall_rolling3y", "season_flag",
     ]
     d = districts.dropna(subset=["risk_score"]).copy()
     X, y = d[feature_cols], d["risk_score"].astype(int)

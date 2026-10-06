@@ -62,7 +62,7 @@ def clean_data(df: pd.DataFrame, cfg) -> pd.DataFrame:
     if cl.get("interpolate", True):
         out = out.sort_values(["station_id", "date"])
         out["level_mbgl"] = (
-            out.groupby("station_id")["level_mbgl"]
+            out.groupby(["district", "station_id"])["level_mbgl"]
             .transform(lambda s: s.interpolate(method="linear", limit=4))
         )
         out = out.sort_values(["district", "station_id", "date"]).reset_index(drop=True)

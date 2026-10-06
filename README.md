@@ -85,13 +85,27 @@ Run tests:
 .venv\Scripts\python -m pytest tests -q
 ```
 
+## Read-only API
+
+The API serves district summaries and district-season history from the same
+published Parquet artifacts as the dashboard. It never exposes raw station
+records or accepts writes:
+
+```powershell
+uvicorn src.api.app:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000/docs` for the interactive API reference. See the
+[product and operations guide](docs/PRODUCT_AND_OPERATIONS.md) for the API
+contract and deployment notes.
+
 ## ☁️ Deployment (Streamlit Community Cloud)
 
 The app is live at **https://ground-water-depletion-risk-atlas.streamlit.app**.
 
 - **Every `git push` to `main` redeploys the cloud app automatically** — no extra steps.
-- The cloud build installs the slim `requirements-app.txt` (dashboard-only dependencies:
-  numpy, pandas, plotly, streamlit, pyyaml) and reads the tracked
+- The cloud build installs the slim `requirements-app.txt` (dashboard/API dependencies:
+  numpy, pandas, pyarrow, plotly, streamlit, pyyaml, fastapi, uvicorn) and reads the tracked
   `data/processed/*.parquet` + `reports/figures/risk_map.geojson`.
 - After retraining with new data, commit the refreshed parquets/GeoJSON and push —
   the live app updates itself.
@@ -142,13 +156,17 @@ src/eda/eda.py               # figures + statistics (shared with the dashboard)
 src/models/                  # sarima, xgboost_model, risk, evaluate, explain (SHAP)
 src/geo/geo.py               # boundaries, name matching, centroids
 src/app/app.py               # Streamlit dashboard
-tests/                       # pytest: cleaning, aggregation, features
-requirements-app.txt         # slim deps for the cloud deploy (dashboard only)
+src/api/app.py               # read-only district-level REST API
+src/risk_categories.py       # shared, model-independent risk labels
+docs/PRODUCT_AND_OPERATIONS.md
+SECURITY.md                  # threat model and security controls
+tests/                       # pytest: pipeline, ingestion, geospatial, and API contracts
+requirements-app.txt         # dashboard/API runtime dependencies
 .streamlit/config.toml       # dashboard theme
 
 data/raw|geo                 # raw data + boundary cache (gitignored; geo auto-downloads)
 data/processed/*.parquet     # cleaned tables — TRACKED (the cloud app reads these)
-models/artifacts             # trained models, forecasts, metrics — TRACKED
+models/artifacts             # trained models, forecasts, metrics, run manifest
 reports/figures              # risk_map.geojson — TRACKED (EDA html is gitignored)
 ```
 
@@ -159,14 +177,16 @@ reports/figures              # risk_map.geojson — TRACKED (EDA html is gitigno
 | XGBoost (holdout) | 0.379 m | 0.503 m | 0.9987 |
 | Persistence baseline | 0.442 m | — | — |
 | SARIMA (backtest) | 0.311 m | 0.384 m | 0.9992 |
-| Risk classifier accuracy | 93% | | |
 
 ## Notes & assumptions
 
 - Future rainfall in the XGBoost recursive forecast is assumed equal to each district's
   trailing 3-year mean (documented in `predict_future_levels`).
-- Risk labels are rule-based from depletion signals; the classifier learns to reproduce and
-  generalise them, and SHAP explains its decisions.
+- Risk labels are rule-based screening categories. The classifier is a surrogate
+  for generated labels—not independent field validation—and SHAP is not causal.
 - District ↔ polygon matching normalises spellings and handles known renames
   (Gurgaon→Gurugram, Mysore→Mysuru, Bangalore Rural→Bengaluru Rural, …), with a fuzzy
   fallback for the rest.
+- See [SECURITY.md](SECURITY.md) for the threat model and
+  [the product and operations guide](docs/PRODUCT_AND_OPERATIONS.md) for
+  personas, data contracts, architecture, testing, deployment, and the demo pitch.

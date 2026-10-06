@@ -42,6 +42,7 @@ except AttributeError:  # plotly <6
     MAP_KEY = "mapbox"
 
 PAGES = [
+    "🎤 Demo & Decision Brief",
     "🗺️ India Risk Map",
     "📍 District Analysis",
     "📈 Groundwater Trends",
@@ -75,6 +76,14 @@ def load_artifacts():
     }
     metrics_path = art / "metrics.json"
     data["metrics"] = json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.exists() else {}
+    manifest_path = art / "atlas_manifest.json"
+    try:
+        data["manifest"] = (
+            json.loads(manifest_path.read_text(encoding="utf-8"))
+            if manifest_path.exists() else {}
+        )
+    except (OSError, json.JSONDecodeError):
+        data["manifest"] = {}
     return cfg, data
 
 
@@ -98,12 +107,19 @@ visible_districts = sorted(
 )
 sel_district = st.sidebar.selectbox("District (detail pages)", visible_districts)
 
-src_note = (
-    "⚠️ demo data — set data.source: local in config.yaml to use your files"
-    if cfg.data_source != "local"
-    else "✅ using your local data files"
-)
-st.sidebar.caption(src_note)
+actual_source = D["manifest"].get("source_used")
+if actual_source == "local":
+    st.sidebar.success("Using local station data")
+elif actual_source == "synthetic-fallback":
+    st.sidebar.warning("Local ingest failed; this run used synthetic fallback data")
+elif actual_source == "synthetic":
+    st.sidebar.caption("Using synthetic demo data")
+else:
+    st.sidebar.caption(
+        f"Configured source: {cfg.data_source}; run provenance not recorded yet"
+    )
+if D["manifest"].get("generated_at"):
+    st.sidebar.caption(f"Pipeline run: {D['manifest']['generated_at']}")
 
 
 def filtered(df: pd.DataFrame) -> pd.DataFrame:
@@ -174,9 +190,61 @@ def make_centroid_map(summary: pd.DataFrame) -> go.Figure:
 
 
 # ==================================================================
-if page == "🗺️ India Risk Map":
+if page == "🎤 Demo & Decision Brief":
+    st.title("🎤 Groundwater Risk Atlas — Decision Brief")
+    st.caption(
+        "A district-scale decision-support prototype for prioritising where to investigate "
+        "groundwater stress—not a substitute for field measurement or water-use policy."
+    )
+    counts = SUMMARY["risk_label"].value_counts()
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Districts in this run", len(SUMMARY))
+    c2.metric("Very High risk", int(counts.get("Very High", 0)))
+    c3.metric("High risk", int(counts.get("High", 0)))
+    c4.metric("Top estimated trend", f"{SUMMARY['trend_slope'].max():.2f} m/yr")
+
+    left, right = st.columns([1.2, 1])
+    with left:
+        st.subheader("The problem")
+        st.write(
+            "Groundwater observations are fragmented across stations and seasons. "
+            "This atlas brings historical depth and rainfall together at district scale, "
+            "then highlights areas where observed trends and short-horizon forecasts "
+            "suggest closer monitoring may be useful."
+        )
+        st.subheader("60-second pitch")
+        st.info(
+            "The Groundwater Depletion Risk Atlas turns station-level groundwater and "
+            "rainfall records into a transparent district-level screening tool. It cleans "
+            "and aggregates the observations, compares seasonal histories, forecasts "
+            "near-term depth with time-series and gradient-boosted models, and maps "
+            "depletion signals so analysts can focus field assessment. Every risk class "
+            "is traceable to configured thresholds, and the forecasts show their limits "
+            "rather than claiming certainty. The result is a reproducible starting point "
+            "for monitoring—not an automated allocation or enforcement decision."
+        )
+    with right:
+        st.subheader("Live demo path")
+        st.markdown(
+            "1. **Map:** scan the district risk pattern and state filter.\n"
+            "2. **District analysis:** compare seasonal groundwater depth with rainfall.\n"
+            "3. **Forecast:** compare SARIMA intervals with the recursive XGBoost path.\n"
+            "4. **At-risk districts:** export the filtered summary for follow-up.\n"
+            "5. **Model performance:** inspect holdout metrics, label rules, and feature importance."
+        )
+        source = D["manifest"].get("source_used", "not recorded")
+        generated = D["manifest"].get("generated_at", "not recorded")
+        st.caption(f"Data source: {source} · Pipeline run: {generated}")
+    st.warning(
+        "Risk labels are rule-based screening categories derived from estimated and "
+        "historical depth trends. They are not validated measures of aquifer storage, "
+        "safe yield, drinking-water access, or causal rainfall impact. Verify findings "
+        "with current local measurements before acting."
+    )
+
+elif page == "🗺️ India Risk Map":
     st.title("🗺️ India Groundwater Risk Map")
-    st.caption("Colour = model-assigned depletion-risk class per district")
+    st.caption("Colour = threshold-based depletion-risk screening class per district")
     risk_counts = SUMMARY["risk_label"].value_counts()
     kpi = st.columns(4)
     kpi[0].metric("Districts", len(SUMMARY))
@@ -257,6 +325,12 @@ elif page == "⚠️ At-Risk Districts":
             }),
             use_container_width=True, height=480,
         )
+        st.download_button(
+            "Download filtered district table (CSV)",
+            s.to_csv(index=False).encode("utf-8"),
+            file_name="groundwater-risk-districts.csv",
+            mime="text/csv",
+        )
     with tab2:
         vc = filtered(SUMMARY)["risk_label"].value_counts().reindex(RISK_ORDER[::-1]).fillna(0)
         fig = px.bar(x=vc.index, y=vc.values, color=vc.index, color_discrete_map=RISK_COLORS)
@@ -314,8 +388,9 @@ else:  # Model Performance & SHAP
             fig.update_layout(height=340)
             st.plotly_chart(fig, use_container_width=True)
         st.caption(
-            "Predicted future decline dominates the risk decision, followed by current depth "
-            "and historical trend — exactly the signals an atlas should key on."
+            "Risk classes are threshold-derived screening labels. This classifier is a "
+            "surrogate fit to those labels—not independent field validation—and SHAP "
+            "describes model behavior rather than causal drivers."
         )
         st.subheader("Risk class distribution")
         st.json(m.get("risk_label_counts", {}))

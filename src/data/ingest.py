@@ -43,6 +43,8 @@ def _map_columns(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
     for canonical, aliases in cfg.column_aliases.items():
         for alias in aliases:
             key = str(alias).strip().lower()
+            if canonical == "level" and "monsoon" in key:
+                continue
             if key in lowered and canonical not in rename.values():
                 rename[lowered[key]] = canonical
                 break
@@ -52,7 +54,20 @@ def _map_columns(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
 def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     if "date" in out.columns:
-        out["date"] = pd.to_datetime(out["date"], errors="coerce", dayfirst=True)
+        values = out["date"]
+        if pd.api.types.is_numeric_dtype(values):
+            year_only = values.notna() & values.between(1800, 2200)
+            parsed = pd.Series(pd.NaT, index=values.index, dtype="datetime64[ns]")
+            parsed.loc[year_only] = pd.to_datetime(
+                values.loc[year_only].astype("Int64").astype(str),
+                format="%Y", errors="coerce",
+            )
+            parsed.loc[~year_only] = pd.to_datetime(
+                values.loc[~year_only].astype(str), errors="coerce", dayfirst=True
+            )
+            out["date"] = parsed
+        else:
+            out["date"] = pd.to_datetime(values, errors="coerce", dayfirst=True)
     for col in ("level_mbgl", "rainfall_mm", "latitude", "longitude"):
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce")
@@ -76,10 +91,18 @@ def _derive_station_id(df: pd.DataFrame) -> pd.DataFrame:
 def _seasonal_wide_to_long(df: pd.DataFrame) -> pd.DataFrame:
     """Handle CGWB-style files where pre/post monsoon levels sit in separate
     columns on one row per station-year."""
-    pre_cols = [c for c in df.columns if "pre" in c.lower() and "monsoon" in c.lower() or c.lower() == "pre-monsoon"]
-    post_cols = [c for c in df.columns if "post" in c.lower() and "monsoon" in c.lower() or c.lower() == "post-monsoon"]
+    pre_cols = [
+        c for c in df.columns
+        if "pre" in str(c).lower() and "monsoon" in str(c).lower()
+    ]
+    post_cols = [
+        c for c in df.columns
+        if "post" in str(c).lower() and "monsoon" in str(c).lower()
+    ]
     if not (pre_cols or post_cols):
         return df
+    if "date" not in df.columns or df["date"].isna().all():
+        raise ValueError("Seasonal wide-format data requires a valid date or year column.")
     long_parts = []
     for cols, season, month in ((pre_cols, "pre-monsoon", 5), (post_cols, "post-monsoon", 11)):
         for col in cols:
@@ -89,7 +112,7 @@ def _seasonal_wide_to_long(df: pd.DataFrame) -> pd.DataFrame:
                 dict(year=part["date"].dt.year, month=month, day=15), errors="coerce"
             )
             part["season"] = season
-            long_parts.append(part[CANONICAL_COLS + ["season"]])
+            long_parts.append(part)
     out = pd.concat(long_parts, ignore_index=True)
     return out
 
@@ -115,14 +138,13 @@ def ingest_local(cfg: Config) -> pd.DataFrame:
             continue
 
         raw = _map_columns(raw, cfg)
-        if "level_mbgl" in raw.columns and raw["level_mbgl"].isna().all():
+        raw = _coerce_types(raw)
+        if any(
+            "pre" in str(col).lower() and "monsoon" in str(col).lower()
+            or "post" in str(col).lower() and "monsoon" in str(col).lower()
+            for col in raw.columns
+        ):
             raw = _seasonal_wide_to_long(raw)
-        if "date" in raw.columns and np.issubdtype(raw["date"].dtype, np.datetime64):
-            pass
-        elif "date" in raw.columns:
-            raw = _coerce_types(raw)
-        else:
-            raw = _coerce_types(raw)
 
         if "district" not in raw.columns:
             logger.warning("%s has no district-like column; skipping", f)
