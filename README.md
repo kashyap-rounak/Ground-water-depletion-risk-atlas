@@ -91,7 +91,7 @@ The app is live at **https://ground-water-depletion-risk-atlas.streamlit.app**.
 
 - **Every `git push` to `main` redeploys the cloud app automatically** — no extra steps.
 - The cloud build installs the slim `requirements-app.txt` (dashboard-only dependencies:
-  numpy, pandas, pyarrow, plotly, streamlit, pyyaml) and reads the tracked
+  numpy, pandas, plotly, streamlit, pyyaml) and reads the tracked
   `data/processed/*.parquet` + `reports/figures/risk_map.geojson`.
 - After retraining with new data, commit the refreshed parquets/GeoJSON and push —
   the live app updates itself.
@@ -124,43 +124,6 @@ to long format.
 If local files are missing or unreadable, the pipeline falls back to synthetic data
 (`data.allow_synthetic_fallback: true`) so the app never hard-fails.
 
-## Public India data used for this atlas run
-
-The nationwide observational run uses public extracts hosted by the India Data Portal:
-
-- **Groundwater:** [CGWB — Changes in Depth to Water Level](https://ckandev.indiadataportal.com/dataset/8ceb3cea-a8a9-4624-af75-fc92429d8fa5/resource/580a8f6e-3d86-4ca7-ac7d-cd5df12b443c).
-  The portal attributes the source to the Central Ground Water Board / India-WRIS.
-- **Rainfall:** [Daily Rainfall Data — District Level](https://ckandev.indiadataportal.com/dataset/25664936-d131-4b07-845e-4bd2c0d794aa/resource/d97707e6-9309-46a5-ac31-e8482ce8f9eb).
-  The portal attributes the source to India-WRIS and describes the actual-rainfall
-  input as a compilation from IMD gridded rainfall, NRSC, APWRIMS, and other agencies.
-- Both dataset packages declare the **Open Data Commons Attribution License
-  (ODC-BY)**. Refer to each source page for current terms and metadata.
-
-These are India Data Portal extracts, not direct downloads from CGWB or IMD. Their
-observation dates and completeness differ. Daily district rainfall is reduced to
-pre-/post-monsoon totals in chunks; full-year rainfall sums are preserved separately.
-Groundwater time-series and joins are scoped by state as well as district. The raw
-CSVs are intentionally excluded from Git; keep them in `data/raw/` when reproducing
-this run. Run metadata records the groundwater observation range and provenance.
-
-### Coverage and interpretation
-
-- Source coverage: groundwater observations span **2013-01-01–2023-03-31**;
-  rainfall spans **2009-01-01–2024-07-31**. The latest groundwater seasons are very
-  sparse: the processed series contain only 10 district-seasons in 2021, 9 in 2022,
-  and 3 in 2023, compared with 532 in 2020. Forecasts therefore have different
-  effective last-observation dates across districts.
-- Only the configured pre-monsoon (March–May) and post-monsoon (October–December)
-  groundwater readings enter seasonal modeling. **281,876 of 547,709 valid
-  groundwater observations (51.5%) were outside those windows** and excluded;
-  January/August readings are not reclassified as monsoon seasons.
-- Exact state-and-district name joins matched **539 of 567** groundwater pairs to
-  rainfall pairs. Unmatched districts remain in groundwater analysis without a
-  rainfall match; names are not silently fuzzy-joined for this calculation.
-- Rainfall values are a portal compilation of underlying sources, not uniform direct
-  station measurements. District aggregation and varying source coverage limit
-  fine-grained interpretation.
-
 ## Configuration
 
 All knobs live in `config.yaml`: data source/paths, cleaning thresholds, season months,
@@ -189,24 +152,14 @@ models/artifacts             # trained models, forecasts, metrics — TRACKED
 reports/figures              # risk_map.geojson — TRACKED (EDA html is gitignored)
 ```
 
-## Metrics snapshot (nationwide observational run)
-
-Pipeline run: **2026-10-10**, on the local portal extracts described above, with
-synthetic fallback disabled. These are historical backtest results on this dataset,
-not a guarantee of performance in future periods or other data sources.
+## Metrics snapshot (demo data)
 
 | Model | MAE | RMSE | R² |
 |---|---|---|---|
-| XGBoost (chronological holdout) | 1.790 m | 2.718 m | 0.8684 |
-| Persistence baseline (holdout MAE) | 1.907 m | — | — |
-| XGBoost (walk-forward CV mean) | 2.088 m | 3.372 m | 0.7137 |
-| SARIMA (sampled backtest) | 2.032 m | 2.771 m | -0.4613 |
-
-The risk classifier's reported **99% agreement** is agreement with labels generated
-from threshold rules that also use overlapping model/trend signals; it is not
-independent validation of future risk prediction. SARIMA's negative R² indicates it
-did not beat the holdout mean baseline on its sampled backtest and should not be
-presented as a reliable forecast model without further evaluation.
+| XGBoost (holdout) | 0.379 m | 0.503 m | 0.9987 |
+| Persistence baseline | 0.442 m | — | — |
+| SARIMA (backtest) | 0.311 m | 0.384 m | 0.9992 |
+| Risk classifier accuracy | 93% | | |
 
 ## Notes & assumptions
 
@@ -214,10 +167,6 @@ presented as a reliable forecast model without further evaluation.
   trailing 3-year mean (documented in `predict_future_levels`).
 - Risk labels are rule-based from depletion signals; the classifier learns to reproduce and
   generalise them, and SHAP explains its decisions.
-- District ↔ polygon matching prefers district-and-state matches, handles known
-  spelling aliases, and only uses unambiguous state-constrained fallbacks. Unmatched
-  districts are reported and use station centroids where coordinates are available.
-- Completed pipeline runs write `models/artifacts/run_metadata.json` with the data
-  source, groundwater observation date range, source date ranges, and any recorded
-  provenance. Raw extracts are not included in Git, so other users must acquire the
-  same licensed source files to reproduce this run.
+- District ↔ polygon matching normalises spellings and handles known renames
+  (Gurgaon→Gurugram, Mysore→Mysuru, Bangalore Rural→Bengaluru Rural, …), with a fuzzy
+  fallback for the rest.

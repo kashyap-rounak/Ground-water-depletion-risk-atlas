@@ -29,88 +29,38 @@ def aggregate_to_district(
     post_months: tuple[int, ...] = (10, 11, 12),
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Station rows -> (district_season_levels, district_rainfall)."""
-    required = {"district", "state", "station_id", "date", "level_mbgl", "rainfall_mm"}
-    missing_columns = sorted(required.difference(df.columns))
-    if missing_columns:
-        raise ValueError(f"Missing required aggregation columns: {', '.join(missing_columns)}")
-    if any(month < 1 or month > 12 for month in (*pre_months, *post_months)):
-        raise ValueError("Season months must be integers from 1 through 12.")
-    if set(pre_months).intersection(post_months):
-        raise ValueError("Pre- and post-monsoon month sets must not overlap.")
-
     d = df.copy()
-    d["date"] = pd.to_datetime(d["date"], errors="coerce")
-    for column in ("level_mbgl", "rainfall_mm"):
-        d[column] = pd.to_numeric(d[column], errors="coerce")
-    invalid_date = d["date"].isna()
-    if invalid_date.any():
-        logger.warning("Ignoring %d rows with invalid dates during aggregation.", int(invalid_date.sum()))
-        d = d.loc[~invalid_date].copy()
     d["year"] = d["date"].dt.year
-    month = d["date"].dt.month
-    d["season"] = np.select(
-        [month.isin(pre_months), month.isin(post_months)],
-        ["pre-monsoon", "post-monsoon"],
-        default="other",
-    )
-    excluded_level_dates = int(
-        (d["level_mbgl"].notna() & d["season"].eq("other")).sum()
-    )
-    if excluded_level_dates:
-        logger.info(
-            "Excluding %d groundwater readings outside configured pre/post-monsoon windows.",
-            excluded_level_dates,
-        )
 
     # ----- groundwater levels: mean across stations per district-season -----
-    g = d[d["level_mbgl"].notna() & d["season"].ne("other")].copy()
+    g = d[d["level_mbgl"].notna()].copy()
+    g["season"] = np.where(g["date"].dt.month.isin(pre_months), "pre-monsoon", "post-monsoon")
     levels = (
-        g.groupby(
-            ["district", "state", "year", "season"],
-            as_index=False,
-            dropna=False,
-        )
+        g.groupby(["district", "state", "year", "season"], as_index=False)
         .agg(level_mbgl=("level_mbgl", "mean"), n_stations=("station_id", "nunique"))
     )
     levels["date"] = [_season_end_date(y, s) for y, s in zip(levels["year"], levels["season"])]
-    levels = levels.sort_values(["district", "date"]).reset_index(drop=True)
+    levels = levels.sort_values(["district", "year", "season"]).reset_index(drop=True)
 
     # ----- rainfall: seasonal totals + annual totals ------------------------
     r = d[d["rainfall_mm"].notna()].copy()
     if r.empty:
         rainfall = pd.DataFrame(
-            columns=[
-                "district", "state", "year", "season", "rainfall_mm",
-                "annual_rainfall_mm",
-            ]
+            columns=["district", "year", "season", "rainfall_mm", "annual_rainfall_mm"]
         )
         return levels, rainfall
 
-    rainfall_keys = ["district", "state", "year"]
-    if "annual_rainfall_mm" in r and r["annual_rainfall_mm"].notna().any():
-        annual = (
-            r.dropna(subset=["annual_rainfall_mm"])
-            .groupby(rainfall_keys, as_index=False, dropna=False)
-            .agg(
-                annual_rainfall_mm=(
-                    "annual_rainfall_mm",
-                    lambda values: values.sum(min_count=1),
-                )
-            )
-        )
-    else:
-        annual = (
-            r.groupby(rainfall_keys, as_index=False, dropna=False)
-            .agg(annual_rainfall_mm=("rainfall_mm", "sum"))
-        )
+    r["season"] = np.where(r["date"].dt.month.isin(pre_months), "pre-monsoon", "post-monsoon")
     seasonal = (
-        r[r["season"].ne("other")]
-        .groupby([*rainfall_keys, "season"], as_index=False, dropna=False)
+        r.groupby(["district", "year", "season"], as_index=False)
         .agg(seasonal_rainfall_mm=("rainfall_mm", "sum"))
     )
-    rainfall = seasonal.merge(annual, on=rainfall_keys, how="left")
+    annual = (
+        r.groupby(["district", "year"], as_index=False)
+        .agg(annual_rainfall_mm=("rainfall_mm", "sum"))
+    )
+    rainfall = seasonal.merge(annual, on=["district", "year"], how="left")
     rainfall = rainfall.rename(columns={"seasonal_rainfall_mm": "rainfall_mm"})
-    rainfall = rainfall.sort_values(["district", "year", "season"]).reset_index(drop=True)
     logger.info(
         "Aggregated: %d district-seasons, %d rainfall rows, %d districts",
         len(levels), len(rainfall), levels["district"].nunique(),
