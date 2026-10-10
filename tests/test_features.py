@@ -40,3 +40,34 @@ def test_supervised_rows(feats):
     sup = drop_rows_without_target(feats)
     assert sup["target_next_level"].notna().all()
     assert len(sup) < len(feats)
+
+
+def test_identically_named_district_series_are_scoped_by_state():
+    levels = pd.DataFrame(
+        {
+            "district": ["Springfield"] * 4,
+            "state": ["State A"] * 2 + ["State B"] * 2,
+            "year": [2020, 2020, 2020, 2020],
+            "season": ["pre-monsoon", "post-monsoon"] * 2,
+            "date": pd.to_datetime(
+                ["2020-05-01", "2020-12-01"] * 2
+            ),
+            "level_mbgl": [10.0, 11.0, 100.0, 101.0],
+        }
+    )
+    rainfall = pd.DataFrame(
+        {
+            "district": ["Springfield"] * 4,
+            "state": ["State A"] * 2 + ["State B"] * 2,
+            "year": [2020] * 4,
+            "season": ["pre-monsoon", "post-monsoon"] * 2,
+            "rainfall_mm": [2.0, 3.0, 20.0, 30.0],
+            "annual_rainfall_mm": [5.0, 5.0, 50.0, 50.0],
+        }
+    )
+
+    features = build_features(levels, rainfall).set_index(["state", "date"])
+
+    assert pd.isna(features.loc[("State B", pd.Timestamp("2020-05-01")), "level_lag1"])
+    assert features.loc[("State B", pd.Timestamp("2020-12-01")), "level_lag1"] == 100.0
+    assert features.loc[("State B", pd.Timestamp("2020-05-01")), "annual_rainfall_mm"] == 50.0

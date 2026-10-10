@@ -1,0 +1,61 @@
+{
+  "generated_at_utc": "2026-10-10T05:53:14.168939+00:00",
+  "source_used": "local",
+  "configured_source": "local",
+  "rows": 582461,
+  "groundwater_observations": 547709,
+  "districts": 567,
+  "seasonal_groundwater_observations": 265833,
+  "groundwater_observations_excluded_by_season": 281876,
+  "date_min": "2013-01-01T00:00:00",
+  "date_max": "2023-03-31T00:00:00",
+  "provenance": {
+    "provider": "India Data Portal",
+    "datasets": [
+      {
+        "title": "CGWB - Changes in Depth to Water Level",
+        "provider": "India Data Portal (source attributed to CGWB / India-WRIS)",
+        "url": "https://ckandev.indiadataportal.com/dataset/8ceb3cea-a8a9-4624-af75-fc92429d8fa5/resource/580a8f6e-3d86-4ca7-ac7d-cd5df12b443c",
+        "license": "Open Data Commons Attribution (ODC-BY)"
+      },
+      {
+        "title": "Daily Rainfall Data - District Level",
+        "provider": "India Data Portal (compilation including IMD gridded rainfall, NRSC, APWRIMS, and other agencies)",
+        "url": "https://ckandev.indiadataportal.com/dataset/25664936-d131-4b07-845e-4bd2c0d794aa/resource/d97707e6-9309-46a5-ac31-e8482ce8f9eb",
+        "license": "Open Data Commons Attribution (ODC-BY)"
+      }
+    ],
+    "source_date_ranges": {
+      "groundwater": {
+        "min": "2013-01-01",
+        "max": "2023-03-31"
+      },
+      "rainfall": {
+        "min": "2009-01-01",
+        "max": "2024-07-31"
+      }
+    },
+    "limitations": [
+      "Groundwater coverage is very sparse at the end of the source period: 10 district-seasons in 2021, 9 in 2022, and 3 in 2023 (532 in 2020). Forecast horizons vary by district.",
+      "Configured March-May and October-December windows exclude January/August and other off-season groundwater readings; no readings were reassigned to a monsoon season.",
+      "Exact state-and-district matching joined 539 of 567 groundwater pairs to rainfall; 28 unmatched groundwater pairs have no rainfall match.",
+      "Rainfall is a district-level portal compilation, not a uniform direct station measurement.",
+      "Risk labels are threshold-generated from predicted decline and historical trend; classifier agreement is not independent validation of future risk prediction."
+    ],
+    "matching_profile": {
+      "groundwater_pairs": 567,
+      "exact_rainfall_pairs": 539,
+      "unmatched_groundwater_pairs": 28
+    }
+  },
+  "source_date_ranges": {
+    "groundwater": {
+      "min": "2013-01-01",
+      "max": "2023-03-31"
+    },
+    "rainfall": {
+      "min": "2009-01-01",
+      "max": "2024-07-31"
+    }
+  }
+}

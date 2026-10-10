@@ -25,7 +25,16 @@ def national_trend(levels: pd.DataFrame) -> pd.DataFrame:
 def depletion_ranking(levels: pd.DataFrame) -> pd.DataFrame:
     """Districts ranked by per-year decline estimated over the full series."""
     rows = []
-    for district, grp in levels.sort_values("date").groupby("district"):
+    entity_keys = (
+        ["state", "district"]
+        if "state" in levels.columns and levels["state"].notna().any()
+        else ["district"]
+    )
+    for entity_values, grp in levels.sort_values("date").groupby(entity_keys):
+        entity_values = (
+            entity_values if isinstance(entity_values, tuple) else (entity_values,)
+        )
+        entity = dict(zip(entity_keys, entity_values))
         s = grp.dropna(subset=["level_mbgl"])
         if len(s) < 4:
             continue
@@ -34,8 +43,7 @@ def depletion_ranking(levels: pd.DataFrame) -> pd.DataFrame:
         slope_m_per_year = np.polyfit(x, y, 1)[0] * 365.25
         rows.append(
             {
-                "district": district,
-                "state": s["state"].iloc[0],
+                **entity,
                 "level_start": y.iloc[0],
                 "level_end": y.iloc[-1],
                 "decline_m_per_year": slope_m_per_year,
@@ -52,15 +60,24 @@ def seasonality(levels: pd.DataFrame) -> pd.DataFrame:
 
 def rainfall_gw_correlation(levels: pd.DataFrame, rainfall: pd.DataFrame) -> pd.DataFrame:
     """Per-district correlation of annual rainfall with groundwater level."""
-    ann = rainfall.groupby(["district", "year"], as_index=False)["annual_rainfall_mm"].first()
-    j = levels.merge(ann, on=["district", "year"], how="inner")
+    entity_keys = (
+        ["state", "district"]
+        if "state" in levels.columns and levels["state"].notna().any()
+        else ["district"]
+    )
+    ann = rainfall.groupby([*entity_keys, "year"], as_index=False)["annual_rainfall_mm"].first()
+    j = levels.merge(ann, on=[*entity_keys, "year"], how="inner")
     rows = []
-    for district, grp in j.groupby("district"):
+    for entity_values, grp in j.groupby(entity_keys):
+        entity_values = (
+            entity_values if isinstance(entity_values, tuple) else (entity_values,)
+        )
+        entity = dict(zip(entity_keys, entity_values))
         s = grp.dropna(subset=["level_mbgl", "annual_rainfall_mm"])
         if len(s) < 5:
             continue
         corr = s["level_mbgl"].corr(s["annual_rainfall_mm"])
-        rows.append({"district": district, "corr_rainfall_level": corr, "n": len(s)})
+        rows.append({**entity, "corr_rainfall_level": corr, "n": len(s)})
     return pd.DataFrame(rows).sort_values("corr_rainfall_level")
 
 
@@ -76,8 +93,14 @@ def fig_national_trend(trend: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def fig_district_series(levels: pd.DataFrame, district: str) -> go.Figure:
+def fig_district_series(
+    levels: pd.DataFrame,
+    district: str,
+    state: str | None = None,
+) -> go.Figure:
     d = levels[levels["district"] == district].sort_values("date")
+    if state is not None and "state" in d.columns:
+        d = d[d["state"] == state]
     fig = go.Figure()
     for season, colour in zip(SEASON_ORDER, ("#d62728", "#1f77b4")):
         s = d[d["season"] == season]
@@ -93,10 +116,35 @@ def fig_district_series(levels: pd.DataFrame, district: str) -> go.Figure:
     return fig
 
 
-def fig_rainfall_levels(rainfall: pd.DataFrame, levels: pd.DataFrame, district: str) -> go.Figure:
-    ann = rainfall.groupby(["district", "year"], as_index=False)["annual_rainfall_mm"].first()
-    d = levels[levels["district"] == district].groupby("year", as_index=False)["level_mbgl"].mean()
-    j = d.merge(ann, on="year", how="inner").sort_values("year")
+def fig_rainfall_levels(
+    rainfall: pd.DataFrame,
+    levels: pd.DataFrame,
+    district: str,
+    state: str | None = None,
+) -> go.Figure:
+    entity_keys = (
+        ["state", "district"]
+        if "state" in levels.columns and levels["state"].notna().any()
+        else ["district"]
+    )
+    ann = rainfall.groupby([*entity_keys, "year"], as_index=False)["annual_rainfall_mm"].first()
+    selected_levels = levels[levels["district"] == district]
+    if state is not None and "state" in levels.columns:
+        selected_levels = selected_levels[selected_levels["state"] == state]
+    district_keys = entity_keys
+    selected_ann = ann[ann["district"] == district]
+    if state is not None and "state" in selected_ann.columns:
+        selected_ann = selected_ann[selected_ann["state"] == state]
+    d = selected_levels.groupby([*district_keys, "year"], as_index=False)["level_mbgl"].mean()
+    join_keys = ["year"]
+    if state is not None and "state" in selected_ann.columns:
+        join_keys = [*entity_keys, "year"]
+    else:
+        selected_ann = selected_ann.groupby(["district", "year"], as_index=False)[
+            "annual_rainfall_mm"
+        ].mean()
+        d = d.groupby(["district", "year"], as_index=False)["level_mbgl"].mean()
+    j = d.merge(selected_ann, on=join_keys, how="inner").sort_values("year")
     fig = go.Figure()
     fig.add_bar(x=j["year"], y=j["annual_rainfall_mm"], name="Annual rainfall (mm)", opacity=0.5)
     fig.add_scatter(
@@ -114,10 +162,15 @@ def fig_rainfall_levels(rainfall: pd.DataFrame, levels: pd.DataFrame, district: 
 
 def fig_hotspots(decline: pd.DataFrame, top_n: int = 15) -> go.Figure:
     d = decline.head(top_n).iloc[::-1]
+    if "state" in d.columns:
+        d["district_label"] = d["district"].astype(str) + " — " + d["state"].astype(str)
+        district_column = "district_label"
+    else:
+        district_column = "district"
     fig = px.bar(
-        d, x="decline_m_per_year", y="district", orientation="h",
+        d, x="decline_m_per_year", y=district_column, orientation="h",
         color="decline_m_per_year", color_continuous_scale="Reds",
-        labels={"decline_m_per_year": "Decline (m/yr)", "district": ""},
+        labels={"decline_m_per_year": "Decline (m/yr)", district_column: ""},
         title=f"Top {top_n} depleting districts",
     )
     fig.update_layout(height=460, margin=dict(l=10, r=10, t=50, b=10))

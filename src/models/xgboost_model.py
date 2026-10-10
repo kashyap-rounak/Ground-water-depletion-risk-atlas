@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+from math import ceil
+from collections.abc import Iterator
 
 import numpy as np
 import pandas as pd
@@ -11,6 +13,15 @@ from xgboost import XGBRegressor
 from src.features.build_features import FEATURE_COLUMNS
 
 logger = logging.getLogger(__name__)
+
+
+def _entity_keys(df: pd.DataFrame) -> list[str]:
+    """Use state-scoped district series when state identifiers are available."""
+    return (
+        ["state", "district"]
+        if "state" in df.columns and df["state"].notna().any()
+        else ["district"]
+    )
 
 
 def _make_model(cfg_xgb: dict, early_stopping: bool = False) -> XGBRegressor:
@@ -32,39 +43,139 @@ def _make_model(cfg_xgb: dict, early_stopping: bool = False) -> XGBRegressor:
 
 
 def chronological_split(df: pd.DataFrame, test_seasons: int) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Split by date: last `test_seasons` distinct dates are the holdout."""
+    """Split by date and purge training rows whose targets enter the holdout."""
+    if test_seasons < 1:
+        raise ValueError("test_seasons must be at least 1.")
+    _validate_supervised_frame(df)
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+
     dates = np.sort(df["date"].unique())
     if len(dates) <= test_seasons:
         test_dates = dates[-max(1, len(dates) // 5):]
     else:
         test_dates = dates[-int(test_seasons):]
+    if not len(test_dates):
+        raise ValueError("Chronological split requires at least one observation date.")
+
+    test_start = pd.Timestamp(test_dates[0])
+    target_dates = _next_observation_dates(df)
     test = df[df["date"].isin(test_dates)]
-    train = df[~df["date"].isin(test_dates)]
+    train_mask = (df["date"] < test_start) & (target_dates < test_start)
+    train = df.loc[train_mask]
+    if train.empty or test.empty:
+        raise ValueError("Not enough chronological observations for non-empty train and test sets.")
     return train, test
+
+
+def _validate_supervised_frame(df: pd.DataFrame) -> None:
+    required = {"district", "date", "target_next_level", *FEATURE_COLUMNS}
+    missing = sorted(required.difference(df.columns))
+    if missing:
+        raise ValueError(f"Missing supervised-model columns: {', '.join(missing)}")
+    if df.empty:
+        raise ValueError("Cannot train or evaluate on an empty dataset.")
+    dates = pd.to_datetime(df["date"], errors="coerce")
+    if dates.isna().any():
+        raise ValueError("Supervised dataset contains missing or invalid dates.")
+    if df["district"].isna().any():
+        raise ValueError("Supervised dataset contains rows without a district.")
+    if df["target_next_level"].isna().any():
+        raise ValueError("Supervised dataset contains rows without a next-level target.")
+
+
+def _next_observation_dates(df: pd.DataFrame) -> pd.Series:
+    """Return each district-season row's next observed date, aligned by index."""
+    entity_keys = _entity_keys(df)
+    ordered = df[[*entity_keys, "date"]].copy()
+    ordered["_row_position"] = np.arange(len(ordered))
+    ordered = ordered.sort_values([*entity_keys, "date"])
+    next_dates = ordered.groupby(entity_keys, sort=False)["date"].shift(-1)
+
+    aligned = pd.Series(index=np.arange(len(df)), dtype="datetime64[ns]")
+    aligned.loc[ordered["_row_position"].to_numpy()] = pd.to_datetime(next_dates).to_numpy()
+    aligned.index = df.index
+    return aligned
+
+
+def _walk_forward_splits(
+    df: pd.DataFrame, n_splits: int
+) -> Iterator[tuple[pd.DataFrame, pd.DataFrame]]:
+    """Yield date-based panel folds with training targets purged at each cutoff."""
+    dates = np.sort(df["date"].unique())
+    if n_splits < 2 or len(dates) <= n_splits:
+        raise ValueError(
+            f"Walk-forward validation needs more than {n_splits} distinct dates; "
+            f"received {len(dates)}."
+        )
+
+    target_dates = _next_observation_dates(df)
+    splitter = TimeSeriesSplit(n_splits=n_splits)
+    for _, validation_positions in splitter.split(dates):
+        validation_dates = dates[validation_positions]
+        validation_start = pd.Timestamp(validation_dates[0])
+        training_mask = (df["date"] < validation_start) & (target_dates < validation_start)
+        training = df.loc[training_mask]
+        validation = df[df["date"].isin(validation_dates)]
+        if training.empty or validation.empty:
+            raise ValueError("A walk-forward fold has an empty training or validation set.")
+        yield training, validation
 
 
 def train_xgb_regressor(
     df: pd.DataFrame, cfg_xgb: dict
-) -> tuple[XGBRegressor, dict[str, float], np.ndarray]:
-    """Train on all rows with a valid target; evaluate on chronological holdout.
+) -> tuple[XGBRegressor, dict[str, float], np.ndarray, pd.DataFrame]:
+    """Select tree count on validation data, refit, and evaluate on a holdout.
 
-    Returns (model, metrics, y_test_pred, test_frame).
+    Returns (model, metrics, y_test_pred, test_frame). The test period is not
+    used for early stopping or any other model selection.
     """
     from src.models.evaluate import regression_metrics
 
     train, test = chronological_split(df, int(cfg_xgb.get("test_seasons", 12)))
-    X_train, y_train = train[FEATURE_COLUMNS], train["target_next_level"]
-    X_test, y_test = test[FEATURE_COLUMNS], test["target_next_level"]
+    training_dates = np.sort(train["date"].unique())
+    validation_count = max(1, ceil(len(training_dates) * 0.2))
+    validation_dates = training_dates[-validation_count:]
+    validation_start = pd.Timestamp(validation_dates[0])
+    next_dates = _next_observation_dates(train)
+    fit_mask = (train["date"] < validation_start) & (next_dates < validation_start)
+    fit = train.loc[fit_mask]
+    validation = train[train["date"].isin(validation_dates)]
+    if fit.empty or validation.empty:
+        raise ValueError("Not enough dates to create a training and early-stopping validation set.")
 
-    model = _make_model(cfg_xgb, early_stopping=True)
-    model.fit(
-        X_train, y_train,
-        eval_set=[(X_test, y_test)],
+    early_stop_model = _make_model(cfg_xgb, early_stopping=True)
+    early_stop_model.fit(
+        fit[FEATURE_COLUMNS],
+        fit["target_next_level"],
+        eval_set=[(validation[FEATURE_COLUMNS], validation["target_next_level"])],
         verbose=False,
     )
+    best_iteration = getattr(early_stop_model, "best_iteration", None)
+    selected_estimators = (
+        int(best_iteration) + 1
+        if best_iteration is not None
+        else int(cfg_xgb.get("n_estimators", 600))
+    )
+    final_cfg = {**cfg_xgb, "n_estimators": selected_estimators}
+    model = _make_model(final_cfg)
+    X_train, y_train = train[FEATURE_COLUMNS], train["target_next_level"]
+    X_test, y_test = test[FEATURE_COLUMNS], test["target_next_level"]
+    model.fit(X_train, y_train)
     pred = model.predict(X_test)
     metrics = regression_metrics(y_test, pred)
-    metrics["baseline_persistence_mae"] = float(np.mean(np.abs(y_test - X_test["level_lag1"])))
+    baseline_mask = X_test["level_lag1"].notna()
+    if baseline_mask.any():
+        metrics["baseline_persistence_mae"] = float(
+            np.mean(
+                np.abs(
+                    y_test.loc[baseline_mask]
+                    - X_test.loc[baseline_mask, "level_lag1"]
+                )
+            )
+        )
+    else:
+        metrics["baseline_persistence_mae"] = float("nan")
     logger.info("XGBoost holdout metrics: %s", metrics)
     return model, metrics, pred, test
 
@@ -76,14 +187,15 @@ def cross_validate(
     from src.models.evaluate import regression_metrics
 
     train, _ = chronological_split(df, int(cfg_xgb.get("test_seasons", 12)))
-    X, y = train[FEATURE_COLUMNS], train["target_next_level"]
-    tscv = TimeSeriesSplit(n_splits=n_splits)
     scores = {"mae": [], "rmse": [], "r2": []}
-    for fold, (tr, va) in enumerate(tscv.split(X), 1):
+    for fold, (fold_train, validation) in enumerate(_walk_forward_splits(train, n_splits), 1):
         m = _make_model(cfg_xgb, early_stopping=False)
-        m.fit(X.iloc[tr], y.iloc[tr])
-        p = m.predict(X.iloc[va])
-        met = regression_metrics(y.iloc[va], p)
+        m.fit(
+            fold_train[FEATURE_COLUMNS],
+            fold_train["target_next_level"],
+        )
+        p = m.predict(validation[FEATURE_COLUMNS])
+        met = regression_metrics(validation["target_next_level"], p)
         for k in scores:
             scores[k].append(met[k])
         logger.debug("Fold %d: %s", fold, met)
@@ -104,13 +216,14 @@ def predict_future_levels(
     """
     seasons_cycle = ["pre-monsoon", "post-monsoon"]
     out_rows = []
-    for district, grp in features.groupby("district"):
+    entity_keys = _entity_keys(features)
+    for entity_values, grp in features.groupby(entity_keys, sort=True, dropna=False):
         g = grp.sort_values("date").copy()
         last = g.iloc[-1]
         last_date = pd.Timestamp(last["date"])
         rolling_rain = float(last.get("rainfall_rolling3y", np.nan))
-        state = last["state"]
-        lag1, lag2, lag4 = float(last["level_mbgl"]), float(last["level_lag1"]), float(last["level_lag4"])
+        entity_values = entity_values if isinstance(entity_values, tuple) else (entity_values,)
+        entity = dict(zip(entity_keys, entity_values))
         series = list(g["level_mbgl"].astype(float).values)
 
         for step in range(1, forecast_years * 2 + 1):
@@ -136,7 +249,7 @@ def predict_future_levels(
             series.append(yhat)
             out_rows.append(
                 {
-                    "district": district, "state": state, "date": future_date,
+                    **entity, "date": future_date,
                     "season": seasons_cycle[(step - 1) % 2],
                     "forecast_level": yhat, "horizon": step,
                 }
