@@ -19,7 +19,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import load_config  # noqa: E402
 from src.eda import eda  # noqa: E402
-from src.geo.geo import normalize_name  # noqa: E402
+from src.geo.geo import feature_key, normalize_name  # noqa: E402
 
 st.set_page_config(page_title="Groundwater Risk Atlas", page_icon="🌍", layout="wide")
 
@@ -53,8 +53,38 @@ PAGES = [
 
 
 # ------------------------------------------------------------------ loading
+def _artifact_signature(cfg) -> tuple[tuple[str, int, int], ...]:
+    """Return file metadata used to invalidate cached artifacts after updates."""
+    proc = Path(cfg.processed_dir)
+    art = Path(cfg.artifacts_dir)
+    files = [
+        proc / "district_levels.parquet",
+        proc / "district_rainfall.parquet",
+        proc / "district_centroids_geo.parquet",
+        art / "sarima_forecast.parquet",
+        art / "xgb_future_levels.parquet",
+        art / "district_summary.parquet",
+        art / "depletion_ranking.parquet",
+        art / "rainfall_gw_correlation.parquet",
+        art / "shap_importance.parquet",
+        art / "metrics.json",
+        art / "run_metadata.json",
+        Path(cfg.figures_dir) / "risk_map.geojson",
+    ]
+    signature = []
+    for path in files:
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            signature.append((str(path), -1, -1))
+        else:
+            signature.append((str(path), stat.st_mtime_ns, stat.st_size))
+    return tuple(signature)
+
+
 @st.cache_data(show_spinner="Loading atlas data…")
-def load_artifacts():
+def load_artifacts(signature: tuple[tuple[str, int, int], ...]):
+    """Load the current artifact set; signature invalidates stale cache entries."""
     cfg = load_config()
     proc = Path(cfg.processed_dir)
     art = Path(cfg.artifacts_dir)
@@ -75,14 +105,41 @@ def load_artifacts():
     }
     metrics_path = art / "metrics.json"
     data["metrics"] = json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.exists() else {}
+    metadata_path = art / "run_metadata.json"
+    data["run_metadata"] = (
+        json.loads(metadata_path.read_text(encoding="utf-8"))
+        if metadata_path.exists() else None
+    )
     return cfg, data
 
 
-cfg, D = load_artifacts()
+@st.cache_data(show_spinner=False)
+def load_risk_geojson(path: str, modified_ns: int, size: int) -> dict:
+    """Read and cache map geometry, invalidated when the source file changes."""
+    del modified_ns, size
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+cfg = load_config()
+cfg, D = load_artifacts(_artifact_signature(cfg))
 LEVELS = D["levels"]
 SUMMARY = D["summary"]
 if LEVELS is None or SUMMARY is None:
-    st.error("Artifacts not found. Run `python scripts/run_pipeline.py` first.")
+    st.error(
+        "Required atlas artifacts are missing. Run `python scripts/run_pipeline.py` "
+        "after verifying the configured input data source."
+    )
+    st.stop()
+if LEVELS.empty or SUMMARY.empty:
+    st.error("Atlas artifacts contain no groundwater or district summary records.")
+    st.stop()
+required_level_columns = {"district", "state", "date", "level_mbgl", "season"}
+missing_columns = required_level_columns.difference(LEVELS.columns)
+if missing_columns:
+    st.error(
+        "The district-level artifact is incompatible; missing columns: "
+        + ", ".join(sorted(missing_columns))
+    )
     st.stop()
 
 STATES = sorted(LEVELS["state"].dropna().unique())
@@ -91,19 +148,60 @@ STATES = sorted(LEVELS["state"].dropna().unique())
 st.sidebar.title("🌍 Risk Atlas")
 page = st.sidebar.radio("Navigate", PAGES)
 sel_state = st.sidebar.selectbox("State filter", ["All states"] + STATES)
-visible_districts = sorted(
-    LEVELS.loc[LEVELS["state"] == sel_state, "district"].unique()
-    if sel_state != "All states"
-    else LEVELS["district"].unique()
+district_rows = LEVELS[["district", "state"]].drop_duplicates()
+if sel_state != "All states":
+    district_rows = district_rows[district_rows["state"] == sel_state]
+district_rows = district_rows.sort_values(["state", "district"])
+district_labels = {
+    (
+        f"{row.district} — {row.state}"
+        if sel_state == "All states"
+        else row.district
+    ): (row.district, row.state)
+    for row in district_rows.itertuples(index=False)
+}
+selected_district = st.sidebar.selectbox(
+    "District (detail pages)", list(district_labels)
 )
-sel_district = st.sidebar.selectbox("District (detail pages)", visible_districts)
+sel_district, sel_district_state = district_labels[selected_district]
 
-src_note = (
-    "⚠️ demo data — set data.source: local in config.yaml to use your files"
-    if cfg.data_source != "local"
-    else "✅ using your local data files"
-)
-st.sidebar.caption(src_note)
+run_metadata = D["run_metadata"]
+if run_metadata is None:
+    st.sidebar.warning(
+        f"Configured source: {cfg.data_source}. These artifacts have no recorded "
+        "run provenance; the source used to generate them cannot be confirmed."
+    )
+elif run_metadata.get("source_used") == "synthetic-fallback":
+    st.sidebar.warning(
+        "These results use synthetic fallback data because local ingestion failed."
+    )
+elif run_metadata.get("source_used") == "synthetic":
+    st.sidebar.warning(
+        "These results use synthetic data and are not evidence about observed "
+        "groundwater conditions."
+    )
+else:
+    st.sidebar.success(
+        f"Data source: {run_metadata.get('source_used', 'unknown')} | "
+        f"observations: {run_metadata.get('date_min', 'unknown')} to "
+        f"{run_metadata.get('date_max', 'unknown')}"
+    )
+    provenance = run_metadata.get("provenance", {})
+    datasets = provenance.get("datasets", [])
+    if datasets:
+        with st.sidebar.expander("Dataset sources & attribution"):
+            for dataset in datasets:
+                st.markdown(
+                    f"**{dataset.get('title', 'Dataset')}**  \n"
+                    f"{dataset.get('provider', 'Provider not recorded')}  \n"
+                    f"[Source and download page]({dataset.get('url', '')})  \n"
+                    f"License: {dataset.get('license', 'not recorded')}"
+                )
+    limitations = provenance.get("limitations", [])
+    if limitations:
+        with st.sidebar.expander("Coverage & limitations"):
+            for limitation in limitations:
+                st.markdown(f"- {limitation}")
 
 
 def filtered(df: pd.DataFrame) -> pd.DataFrame:
@@ -112,14 +210,32 @@ def filtered(df: pd.DataFrame) -> pd.DataFrame:
     return df[df["state"] == sel_state]
 
 
+def selected_district_rows(df: pd.DataFrame) -> pd.DataFrame:
+    result = df[df["district"] == sel_district]
+    if "state" in result.columns:
+        result = result[result["state"] == sel_district_state]
+    return result
+
+
 # ------------------------------------------------------------------ map figs
 def make_choropleth(summary: pd.DataFrame) -> go.Figure | None:
     geo_path = Path(cfg.figures_dir) / "risk_map.geojson"
     if not geo_path.exists():
         return None
-    gj = json.loads(geo_path.read_text(encoding="utf-8"))
+    stat = geo_path.stat()
+    gj = load_risk_geojson(str(geo_path), stat.st_mtime_ns, stat.st_size)
     s = summary.copy()
-    s["key"] = s["district"].map(normalize_name)
+    scoped_keys = any(
+        feature.get("properties", {}).get("key_scope") == "state_district_v1"
+        for feature in gj.get("features", [])
+    )
+    if scoped_keys:
+        s["key"] = [
+            feature_key(district, state)
+            for district, state in zip(s["district"], s["state"])
+        ]
+    else:
+        s["key"] = s["district"].map(normalize_name)
     custom = np.stack(
         [s["district"], s["risk_label"], s["level_mbgl"], s["trend_slope"]], axis=-1
     )
@@ -154,12 +270,14 @@ def make_choropleth(summary: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
-def make_centroid_map(summary: pd.DataFrame) -> go.Figure:
+def make_centroid_map(summary: pd.DataFrame) -> go.Figure | None:
     if D["centroids"] is not None and len(D["centroids"]):
         pts = summary.merge(D["centroids"], on=["district", "state"], how="left")
     else:
-        pts = summary.assign(latitude=22.0, longitude=80.0)
+        return None
     pts = pts.dropna(subset=["latitude", "longitude"])
+    if pts.empty:
+        return None
     fig = SCATTER_MAP(
         pts, lat="latitude", lon="longitude",
         color="risk_label", color_discrete_map=RISK_COLORS,
@@ -176,7 +294,10 @@ def make_centroid_map(summary: pd.DataFrame) -> go.Figure:
 # ==================================================================
 if page == "🗺️ India Risk Map":
     st.title("🗺️ India Groundwater Risk Map")
-    st.caption("Colour = model-assigned depletion-risk class per district")
+    st.caption(
+        "Risk classes are assigned by configured thresholds applied to forecast "
+        "and historical depletion signals."
+    )
     risk_counts = SUMMARY["risk_label"].value_counts()
     kpi = st.columns(4)
     kpi[0].metric("Districts", len(SUMMARY))
@@ -184,20 +305,34 @@ if page == "🗺️ India Risk Map":
     kpi[2].metric("High risk", int(risk_counts.get("High", 0)))
     kpi[3].metric("Fastest decline", f"{SUMMARY['trend_slope'].max():.2f} m/yr")
     fig = make_choropleth(filtered(SUMMARY)) or make_centroid_map(filtered(SUMMARY))
-    st.plotly_chart(fig, use_container_width=True)
+    if fig is None:
+        st.warning(
+            "No usable district boundaries or station coordinates are available. "
+            "The map is unavailable for this artifact set."
+        )
+    else:
+        st.plotly_chart(fig, use_container_width=True)
 
 elif page == "📍 District Analysis":
     st.title(f"📍 {sel_district}")
-    d = LEVELS[LEVELS["district"] == sel_district].sort_values("date")
-    s_row = SUMMARY.set_index("district").loc[sel_district]
+    d = selected_district_rows(LEVELS).sort_values("date")
+    s_row = selected_district_rows(SUMMARY).iloc[0]
     n = len(d)
     c1, c2, c3 = st.columns(3)
     c1.metric("Latest depth (m bgl)", f"{d['level_mbgl'].iloc[-1]:.1f}")
     window = d["level_mbgl"].iloc[-min(20, n):]
     c2.metric("Recent change (10 yr)", f"{window.iloc[-1] - window.iloc[0]:+.1f} m")
     c3.metric("Risk class", s_row["risk_label"])
-    st.plotly_chart(eda.fig_district_series(LEVELS, sel_district), use_container_width=True)
-    st.plotly_chart(eda.fig_rainfall_levels(D["rainfall"], LEVELS, sel_district), use_container_width=True)
+    st.plotly_chart(
+        eda.fig_district_series(LEVELS, sel_district, sel_district_state),
+        use_container_width=True,
+    )
+    st.plotly_chart(
+        eda.fig_rainfall_levels(
+            D["rainfall"], LEVELS, sel_district, sel_district_state
+        ),
+        use_container_width=True,
+    )
 
 elif page == "📈 Groundwater Trends":
     st.title("📈 Groundwater Trends")
@@ -209,21 +344,21 @@ elif page == "📈 Groundwater Trends":
 
 elif page == "🔮 Future Forecast":
     st.title("🔮 Future Forecast")
-    hist = LEVELS[LEVELS["district"] == sel_district].sort_values("date")
+    hist = selected_district_rows(LEVELS).sort_values("date")
     fc = D["sarima"]
     f2 = D["future"]
     fig = go.Figure()
     fig.add_scatter(x=hist["date"], y=hist["level_mbgl"], name="Observed", mode="lines+markers")
-    if fc is not None and len(fc[fc["district"] == sel_district]):
-        f = fc[fc["district"] == sel_district].sort_values("date")
+    if fc is not None and len(selected_district_rows(fc)):
+        f = selected_district_rows(fc).sort_values("date")
         fig.add_scatter(x=f["date"], y=f["forecast_level"], name="SARIMA", mode="lines+markers")
         fig.add_scatter(
             x=list(f["date"]) + list(f["date"][::-1]),
             y=list(f["upper_95"]) + list(f["lower_95"][::-1]),
             fill="toself", name="95% CI", line=dict(width=0), opacity=0.15,
         )
-    if f2 is not None and len(f2[f2["district"] == sel_district]):
-        f = f2[f2["district"] == sel_district].sort_values("date")
+    if f2 is not None and len(selected_district_rows(f2)):
+        f = selected_district_rows(f2).sort_values("date")
         fig.add_scatter(
             x=f["date"], y=f["forecast_level"], name="XGBoost (ML)",
             mode="lines+markers", line=dict(dash="dot"),
@@ -235,7 +370,9 @@ elif page == "🔮 Future Forecast":
     st.plotly_chart(fig, use_container_width=True)
     if fc is not None:
         st.dataframe(
-            fc[fc["district"] == sel_district][["date", "season", "forecast_level", "lower_95", "upper_95"]].round(2),
+            selected_district_rows(fc)[
+                ["date", "season", "forecast_level", "lower_95", "upper_95"]
+            ].round(2),
             use_container_width=True,
         )
 
@@ -277,7 +414,12 @@ elif page == "🌧️ Rainfall Analysis":
     )
     fig2.update_layout(height=620)
     st.plotly_chart(fig2, use_container_width=True)
-    st.plotly_chart(eda.fig_rainfall_levels(D["rainfall"], LEVELS, sel_district), use_container_width=True)
+    st.plotly_chart(
+        eda.fig_rainfall_levels(
+            D["rainfall"], LEVELS, sel_district, sel_district_state
+        ),
+        use_container_width=True,
+    )
 
 else:  # Model Performance & SHAP
     st.title("🤖 Model Performance & SHAP")
@@ -297,16 +439,31 @@ else:  # Model Performance & SHAP
 
     left, right = st.columns(2)
     with left:
-        st.subheader("Risk classifier report")
+        st.subheader("Risk classifier agreement with threshold labels")
+        st.caption(
+            "The classifier is trained to reproduce rule-generated labels using "
+            "overlapping risk signals. These metrics are not independent validation "
+            "of future risk prediction."
+        )
         st.text(m.get("risk_classifier_report", "n/a"))
         st.subheader("Confusion matrix")
         cm = np.array(m.get("confusion_matrix", []))
-        if cm.size:
-            labels = m.get("risk_label_counts", {})
-            order = [l for l in RISK_ORDER[::-1]]
-            fig = px.imshow(cm, text_auto=True, x=order, y=order, color_continuous_scale="Blues")
+        class_order = ["Low", "Moderate", "High", "Very High"]
+        if cm.shape == (len(class_order), len(class_order)):
+            fig = px.imshow(
+                cm,
+                text_auto=True,
+                x=class_order,
+                y=class_order,
+                color_continuous_scale="Blues",
+            )
             fig.update_layout(xaxis_title="Predicted", yaxis_title="Actual")
             st.plotly_chart(fig, use_container_width=True)
+        elif cm.size:
+            st.warning(
+                "The stored confusion matrix does not use the current four-class "
+                "risk-label format. Rerun the pipeline to regenerate it."
+            )
     with right:
         st.subheader("SHAP global importance (risk model)")
         if D["shap"] is not None and len(D["shap"]):

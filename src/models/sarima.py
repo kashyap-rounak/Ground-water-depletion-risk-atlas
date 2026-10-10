@@ -15,6 +15,15 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def _entity_keys(df: pd.DataFrame) -> list[str]:
+    """Use state-scoped district series when state identifiers are available."""
+    return (
+        ["state", "district"]
+        if "state" in df.columns and df["state"].notna().any()
+        else ["district"]
+    )
+
+
 def _fit_forecast_one(series: pd.Series, order, seasonal_order, steps: int):
     """Fit SARIMAX on a 1D series (integer index) and forecast `steps`."""
     from statsmodels.tsa.statespace.sarimax import SARIMAX
@@ -67,27 +76,32 @@ def forecast_all_districts(
 
     parts: list[pd.DataFrame] = []
     aic: dict[str, float] = {}
-    districts = sorted(levels["district"].unique())
+    entity_keys = _entity_keys(levels)
+    entities = list(levels[entity_keys].drop_duplicates().sort_values(entity_keys).itertuples(index=False, name=None))
     if max_districts:
-        districts = districts[: int(max_districts)]
+        entities = entities[: int(max_districts)]
 
-    for district in districts:
-        g = levels[levels["district"] == district].sort_values("date")
+    for entity_values in entities:
+        entity = dict(zip(entity_keys, entity_values))
+        mask = pd.Series(True, index=levels.index)
+        for key, value in entity.items():
+            mask &= levels[key].eq(value)
+        g = levels.loc[mask].sort_values("date")
         s = g.set_index("date")["level_mbgl"].dropna()
         if len(s) < 4 * seasonal_period:
-            logger.debug("Skipping %s: too few observations (%d)", district, len(s))
+            logger.debug("Skipping %s: too few observations (%d)", entity, len(s))
             continue
         try:
             mean, ci, res = _fit_forecast_one(s, order, seasonal_order, steps)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("SARIMA failed for %s: %s", district, exc)
+            logger.warning("SARIMA failed for %s: %s", entity, exc)
             continue
-        aic[district] = float(res.aic)
+        aic["|".join(str(entity[key]) for key in entity_keys)] = float(res.aic)
         future_dates = _future_dates(pd.Timestamp(s.index[-1]), steps)
         parts.append(
             pd.DataFrame(
                 {
-                    "district": district,
+                    **entity,
                     "date": future_dates,
                     "forecast_level": mean,
                     "lower_95": ci[:, 0],
@@ -102,7 +116,7 @@ def forecast_all_districts(
     fc = pd.concat(parts, ignore_index=True)
     fc["season"] = np.where(fc["date"].dt.month == 5, "pre-monsoon", "post-monsoon")
     fc["year"] = fc["date"].dt.year
-    logger.info("SARIMA: forecasts for %d districts", fc["district"].nunique())
+    logger.info("SARIMA: forecasts for %d district/state pairs", len(entities))
     return fc, aic
 
 
@@ -116,9 +130,19 @@ def backtest_sarima(
     """Rolling-origin backtest on a sample of districts for evaluation."""
     seasonal_period = int(seasonal_order[3])
     rows = []
-    districts = sorted(levels["district"].unique())[: int(max_districts)]
-    for district in districts:
-        g = levels[levels["district"] == district].sort_values("date")
+    entity_keys = _entity_keys(levels)
+    entities = (
+        levels[entity_keys]
+        .drop_duplicates()
+        .sort_values(entity_keys)
+        .itertuples(index=False, name=None)
+    )
+    for entity_values in list(entities)[: int(max_districts)]:
+        entity = dict(zip(entity_keys, entity_values))
+        mask = pd.Series(True, index=levels.index)
+        for key, value in entity.items():
+            mask &= levels[key].eq(value)
+        g = levels.loc[mask].sort_values("date")
         s = g.set_index("date")["level_mbgl"].dropna()
         if len(s) < 4 * seasonal_period + holdout_seasons:
             continue
@@ -129,6 +153,6 @@ def backtest_sarima(
             continue
         for date, yhat, y in zip(test.index, mean, test.values):
             rows.append(
-                {"district": district, "date": date, "y_true": float(y), "y_pred": float(yhat)}
+                {**entity, "date": date, "y_true": float(y), "y_pred": float(yhat)}
             )
     return pd.DataFrame(rows)
