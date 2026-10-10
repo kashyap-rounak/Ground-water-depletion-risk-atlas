@@ -30,27 +30,17 @@ def build_features(
 ) -> pd.DataFrame:
     """Return the master feature table (one row per district-season)."""
     lvl = levels.copy()
-    entity_keys = (
-        ["state", "district"]
-        if (
-            "state" in lvl.columns
-            and "state" in rainfall.columns
-            and lvl["state"].notna().any()
-            and rainfall["state"].notna().any()
-        )
-        else ["district"]
-    )
 
     # ----- join annual + seasonal rainfall onto the levels table ----------
     ann = (
-        rainfall.groupby([*entity_keys, "year"], as_index=False)["annual_rainfall_mm"]
+        rainfall.groupby(["district", "year"], as_index=False)["annual_rainfall_mm"]
         .first()
     )
-    lvl = lvl.merge(ann, on=[*entity_keys, "year"], how="left")
+    lvl = lvl.merge(ann, on=["district", "year"], how="left")
 
     # ----- per-district seasonal lags (ordered by date) --------------------
-    lvl = lvl.sort_values([*entity_keys, "date"]).copy()
-    g = lvl.groupby(entity_keys)["level_mbgl"]
+    lvl = lvl.sort_values(["district", "date"]).copy()
+    g = lvl.groupby("district")["level_mbgl"]
     for lag in (1, 2, 4):
         lvl[f"level_lag{lag}"] = g.shift(lag)
     lvl["level_change_yoy"] = lvl["level_mbgl"] - g.shift(yoy_seasons)
@@ -60,16 +50,16 @@ def build_features(
 
     # ----- rainfall features ------------------------------------------------
     lvl = lvl.merge(
-        rainfall[[*entity_keys, "year", "season", "rainfall_mm"]],
-        on=[*entity_keys, "year", "season"], how="left",
+        rainfall[["district", "year", "season", "rainfall_mm"]],
+        on=["district", "year", "season"], how="left",
     ).rename(columns={"rainfall_mm": "season_rainfall"})
     lvl["rainfall_rolling3y"] = (
-        lvl.groupby(entity_keys)["annual_rainfall_mm"].transform(
+        lvl.groupby("district")["annual_rainfall_mm"].transform(
             lambda s: s.shift(1).rolling(rolling_years, min_periods=1).mean()
         )
     )
-    lvl["rainfall_lag1_season"] = lvl.groupby(entity_keys)["season_rainfall"].shift(1)
-    lvl["rainfall_lag1_year"] = lvl.groupby(entity_keys)["annual_rainfall_mm"].shift(2)
+    lvl["rainfall_lag1_season"] = lvl.groupby("district")["season_rainfall"].shift(1)
+    lvl["rainfall_lag1_year"] = lvl.groupby("district")["annual_rainfall_mm"].shift(2)
 
     # ----- seasonal encoding -------------------------------------------------
     lvl["season_flag"] = (lvl["season"] == "post-monsoon").astype(int)
@@ -86,12 +76,12 @@ def build_features(
         return float(slope)
 
     lvl["trend_slope"] = (
-        lvl.groupby(entity_keys)["level_mbgl"]
+        lvl.groupby("district")["level_mbgl"]
         .transform(lambda s: s.rolling(5, min_periods=3).apply(_slope, raw=False))
     )
     lvl["trend_slope"] = lvl["trend_slope"] / 2.0  # per season -> per year approx
 
-    lvl = lvl.sort_values([*entity_keys, "date"]).reset_index(drop=True)
+    lvl = lvl.sort_values(["district", "date"]).reset_index(drop=True)
     return lvl
 
 

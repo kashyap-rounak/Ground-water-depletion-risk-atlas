@@ -1,49 +1,49 @@
 {
   "xgboost": {
-    "mae": 1.7898135917395759,
-    "rmse": 2.7180802145126166,
-    "r2": 0.8684379513881657,
-    "baseline_persistence_mae": 1.9067370064376712,
-    "cv_mae_mean": 2.088340747357861,
-    "cv_rmse_mean": 3.3723059327857934,
-    "cv_r2_mean": 0.7136742284736374
+    "mae": 0.378540070421166,
+    "rmse": 0.5025627885846441,
+    "r2": 0.9987179795713782,
+    "baseline_persistence_mae": 0.441888888888889,
+    "cv_mae_mean": 0.9507064709173667,
+    "cv_rmse_mean": 2.1371689511382863,
+    "cv_r2_mean": 0.9685167490790418
   },
   "sarima_backtest": {
-    "mae": 2.0323087758723037,
-    "rmse": 2.770856294897906,
-    "r2": -0.461337423263513
+    "mae": 0.31104594287325027,
+    "rmse": 0.3839586075932404,
+    "r2": 0.9991636434455359
   },
-  "risk_classifier_report": "              precision    recall  f1-score   support\n\n         Low       1.00      1.00      1.00        22\n    Moderate       1.00      1.00      1.00        26\n        High       0.98      0.98      0.98        48\n   Very High       0.98      0.98      0.98        45\n\n    accuracy                           0.99       141\n   macro avg       0.99      0.99      0.99       141\nweighted avg       0.99      0.99      0.99       141\n",
+  "risk_classifier_report": "              precision    recall  f1-score   support\n\n         Low       1.00      0.50      0.67         2\n    Moderate       0.67      1.00      0.80         2\n        High       1.00      1.00      1.00         6\n   Very High       1.00      1.00      1.00         5\n\n    accuracy                           0.93        15\n   macro avg       0.92      0.88      0.87        15\nweighted avg       0.96      0.93      0.93        15\n",
   "confusion_matrix": [
     [
-      22,
-      0,
-      0,
-      0
-    ],
-    [
-      0,
-      26,
-      0,
-      0
-    ],
-    [
-      0,
-      0,
-      47,
-      1
-    ],
-    [
-      0,
-      0,
       1,
-      44
+      1,
+      0,
+      0
+    ],
+    [
+      0,
+      2,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      6,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      5
     ]
   ],
   "risk_label_counts": {
-    "High": 189,
-    "Very High": 181,
-    "Moderate": 103,
-    "Low": 89
+    "High": 23,
+    "Very High": 19,
+    "Moderate": 9,
+    "Low": 9
   }
 }

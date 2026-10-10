@@ -9,7 +9,6 @@ Thresholds (m/yr) come from config: risk.decline_m_per_year.
 from __future__ import annotations
 
 import logging
-from math import ceil
 
 import numpy as np
 import pandas as pd
@@ -63,21 +62,7 @@ def train_risk_classifier(
     d = districts.dropna(subset=["risk_score"]).copy()
     X, y = d[feature_cols], d["risk_score"].astype(int)
 
-    if len(d) < 2:
-        raise ValueError("Risk classifier requires at least two labeled districts.")
-
-    class_ids = list(range(len(LABELS)))
-    present_classes = sorted(y.unique().tolist())
-    test_count = ceil(len(d) * 0.25)
-    train_count = len(d) - test_count
-    class_counts = y.value_counts()
-    can_stratify = (
-        len(present_classes) > 1
-        and class_counts.min() >= 2
-        and test_count >= len(present_classes)
-        and train_count >= len(present_classes)
-    )
-    strat = y if can_stratify else None
+    strat = y if y.value_counts().min() >= 2 else None
     X_tr, X_te, y_tr, y_te = train_test_split(
         X, y, test_size=0.25, random_state=seed, stratify=strat
     )
@@ -93,12 +78,13 @@ def train_risk_classifier(
     )
     clf.fit(X_tr, y_tr)
     y_pred = clf.predict(X_te)
+    present = sorted(y.unique().tolist())
     report = classification_report(
         y_te, y_pred,
-        labels=class_ids,
-        target_names=LABELS,
+        labels=present,
+        target_names=[LABELS[i] for i in present],
         zero_division=0,
     )
-    cm = confusion_matrix(y_te, y_pred, labels=class_ids)
+    cm = confusion_matrix(y_te, y_pred)
     logger.info("Risk classifier report:\n%s", report)
     return clf, report, cm, feature_cols
