@@ -108,6 +108,10 @@ class Config:
     def geo(self) -> Dict[str, Any]:
         return self.raw.get("geo", {})
 
+    @property
+    def auth(self) -> Dict[str, Any]:
+        return self.raw.get("auth", {})
+
 
 def load_config(path: str | Path | None = None) -> Config:
     """Load config.yaml from the project root (or an explicit path)."""

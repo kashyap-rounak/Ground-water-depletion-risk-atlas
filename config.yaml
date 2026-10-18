@@ -111,3 +111,11 @@ geo:
   # India district boundaries GeoJSON source (cached into data/geo/)
   boundaries_url: "https://raw.githubusercontent.com/geohacker/india/master/district/india_district.geojson" # geohacker india districts (has DISTRICT + ST_NM props)
   fallback_centroids: true
+
+# Authentication for Streamlit dashboard (optional)
+auth:
+  enabled: false   # set to true to require login for the Streamlit dashboard
+  users:
+    admin: "admin123"
+    analyst: "water2026"
+    viewer: "atlas123"

@@ -20,6 +20,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.config import load_config  # noqa: E402
 from src.eda import eda  # noqa: E402
 from src.geo.geo import normalize_name  # noqa: E402
+from src.app.auth import check_auth  # noqa: E402
 
 st.set_page_config(page_title="Groundwater Risk Atlas", page_icon="🌍", layout="wide")
 
@@ -79,6 +80,9 @@ def load_artifacts():
 
 
 cfg, D = load_artifacts()
+if not check_auth(cfg):
+    st.stop()
+
 LEVELS = D["levels"]
 SUMMARY = D["summary"]
 if LEVELS is None or SUMMARY is None:

@@ -29,12 +29,14 @@ geographically, and presents the results through an interactive Streamlit dashbo
    station-centroid fallback map when boundaries are unavailable.
 8. **Streamlit dashboard** — 7 tabs: 🗺️ India Risk Map · 📍 District Analysis ·
    📈 Groundwater Trends · 🔮 Future Forecast · ⚠️ At-Risk Districts · 🌧️ Rainfall Analysis ·
-   🤖 Model Performance & SHAP.
+   🤖 Model Performance & SHAP (with optional user authentication).
+9. **FastAPI REST Service** — Interactive Swagger API (`/docs`) exposing forecasts,
+   district profiles, hotspots, and SHAP drivers for external apps.
 
 ## 🧠 Tech stack
 
 Python · NumPy · Pandas · Scikit-learn · XGBoost · Statsmodels (SARIMA) · SHAP ·
-GeoPandas · Plotly · Streamlit · PyYAML
+GeoPandas · Plotly · Streamlit · FastAPI · Uvicorn · PyYAML
 
 ## 🎬 Run for a presentation (models already trained)
 
@@ -71,6 +73,10 @@ python scripts/run_pipeline.py
 
 # 2. launch the dashboard
 .venv\Scripts\streamlit run src/app/app.py
+
+# 3. launch the FastAPI REST service (optional)
+.venv\Scripts\uvicorn src.api.main:app --reload --port 8000
+# OpenAPI Swagger UI available at: http://localhost:8000/docs
 ```
 
 Optional: pre-download district boundaries (auto-downloaded on first pipeline run anyway):
@@ -79,11 +85,23 @@ Optional: pre-download district boundaries (auto-downloaded on first pipeline ru
 python scripts/download_geo.py
 ```
 
-Run tests:
+Run tests (includes ETL, ML, API, and Auth suites):
 
 ```bash
-.venv\Scripts\python -m pytest tests -q
+.venv\Scripts\python -m pytest tests -v
 ```
+
+## 🔐 Optional Dashboard Authentication
+
+To password-protect the dashboard, enable authentication in `config.yaml`:
+```yaml
+auth:
+  enabled: true
+  users:
+    admin: "admin123"
+    viewer: "atlas123"
+```
+When enabled, users must log in to access the dashboard. When disabled (`enabled: false`), the atlas is open for public access.
 
 ## ☁️ Deployment (Streamlit Community Cloud)
 
