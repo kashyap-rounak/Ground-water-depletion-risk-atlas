@@ -40,18 +40,19 @@ def _map_columns(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
     """Rename file columns to canonical names using the alias table."""
     rename: dict[str, str] = {}
     lowered = {str(c).strip().lower(): c for c in df.columns}
-    for canonical, aliases in cfg.column_aliases.items():
+    for canonical_key, aliases in cfg.column_aliases.items():
+        canonical_target = cfg.canonical.get(canonical_key, canonical_key)
         for alias in aliases:
             key = str(alias).strip().lower()
-            if key in lowered and canonical not in rename.values():
-                rename[lowered[key]] = canonical
+            if key in lowered and canonical_target not in rename.values():
+                rename[lowered[key]] = canonical_target
                 break
     return df.rename(columns=rename)
 
 
 def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
-    if "date" in out.columns:
+    if "date" in out.columns and not pd.api.types.is_datetime64_any_dtype(out["date"]):
         out["date"] = pd.to_datetime(out["date"], errors="coerce", dayfirst=True)
     for col in ("level_mbgl", "rainfall_mm", "latitude", "longitude"):
         if col in out.columns:
@@ -117,12 +118,7 @@ def ingest_local(cfg: Config) -> pd.DataFrame:
         raw = _map_columns(raw, cfg)
         if "level_mbgl" in raw.columns and raw["level_mbgl"].isna().all():
             raw = _seasonal_wide_to_long(raw)
-        if "date" in raw.columns and np.issubdtype(raw["date"].dtype, np.datetime64):
-            pass
-        elif "date" in raw.columns:
-            raw = _coerce_types(raw)
-        else:
-            raw = _coerce_types(raw)
+        raw = _coerce_types(raw)
 
         if "district" not in raw.columns:
             logger.warning("%s has no district-like column; skipping", f)

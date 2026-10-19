@@ -71,21 +71,19 @@ def forecast_all_districts(
     if max_districts:
         districts = districts[: int(max_districts)]
 
-    for district in districts:
+    import os
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _fit_district(district: str):
         g = levels[levels["district"] == district].sort_values("date")
         s = g.set_index("date")["level_mbgl"].dropna()
         if len(s) < 4 * seasonal_period:
             logger.debug("Skipping %s: too few observations (%d)", district, len(s))
-            continue
+            return None
         try:
             mean, ci, res = _fit_forecast_one(s, order, seasonal_order, steps)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("SARIMA failed for %s: %s", district, exc)
-            continue
-        aic[district] = float(res.aic)
-        future_dates = _future_dates(pd.Timestamp(s.index[-1]), steps)
-        parts.append(
-            pd.DataFrame(
+            future_dates = _future_dates(pd.Timestamp(s.index[-1]), steps)
+            part = pd.DataFrame(
                 {
                     "district": district,
                     "date": future_dates,
@@ -95,7 +93,18 @@ def forecast_all_districts(
                     "horizon": np.arange(1, steps + 1),
                 }
             )
-        )
+            return district, float(res.aic), part
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("SARIMA failed for %s: %s", district, exc)
+            return None
+
+    max_workers = min(12, os.cpu_count() or 4)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        for result in pool.map(_fit_district, districts):
+            if result is not None:
+                dist, aic_val, part = result
+                aic[dist] = aic_val
+                parts.append(part)
 
     if not parts:
         raise RuntimeError("SARIMA produced no forecasts (all districts skipped).")

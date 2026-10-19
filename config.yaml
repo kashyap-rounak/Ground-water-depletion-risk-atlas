@@ -15,11 +15,11 @@
 data:
   # "synthetic"  -> generate realistic demo data (works offline, no files needed)
   # "local"      -> read your real files
-  source: synthetic
+  source: local
   # Folder or file path. If empty, defaults to data/raw/
   local_path: ""
   # Fallback to synthetic if local files are missing/empty (keeps pipeline running)
-  allow_synthetic_fallback: true
+  allow_synthetic_fallback: false
 
   # Date range used when generating synthetic data
   synthetic:
@@ -43,10 +43,10 @@ data:
   column_aliases:
     district: [district, district_name, districts, dist_name, name_of_district, "district name"]
     state: [state, state_name, state_ut, "state/ut"]
-    station_id: [station_id, station, well_id, site_id, site, station code, "station code", sno, s_no]
+    station_id: [station_id, station, well_id, site_id, site, station code, "station code", sno, s_no, station_name]
     date: [date, observation_date, obs_date, measurement_date, "date_of_observation", "date of measurement", "date of observation", year, season_date]
-    level: [level_mbgl, water_level, groundwater_level, gw_level, level, depth_to_water, "water level (mbgl)", "pre-monsoon", "post-monsoon", dtw]
-    rainfall: [rainfall_mm, rainfall, rain, precipitation, "rainfall (mm)", annual_rainfall]
+    level: [level_mbgl, water_level, groundwater_level, gw_level, level, depth_to_water, "water level (mbgl)", "pre-monsoon", "post-monsoon", dtw, currentlevel]
+    rainfall: [rainfall_mm, rainfall, rain, precipitation, "rainfall (mm)", annual_rainfall, actual]
     latitude: [latitude, lat, y, "lat"]
     longitude: [longitude, lon, long, x, "long"]
 

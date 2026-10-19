@@ -1,49 +1,49 @@
 {
   "xgboost": {
-    "mae": 0.378540070421166,
-    "rmse": 0.5025627885846441,
-    "r2": 0.9987179795713782,
-    "baseline_persistence_mae": 0.441888888888889,
-    "cv_mae_mean": 0.9507064709173667,
-    "cv_rmse_mean": 2.1371689511382863,
-    "cv_r2_mean": 0.9685167490790418
+    "mae": 1.3797239632159548,
+    "rmse": 2.241041505464156,
+    "r2": 0.9125179250863874,
+    "baseline_persistence_mae": 1.4294473157807934,
+    "cv_mae_mean": 1.5055384709117012,
+    "cv_rmse_mean": 3.0903130171309527,
+    "cv_r2_mean": 0.8152685966437072
   },
   "sarima_backtest": {
-    "mae": 0.31104594287325027,
-    "rmse": 0.3839586075932404,
-    "r2": 0.9991636434455359
+    "mae": 303.15024334216673,
+    "rmse": 1480.587494107815,
+    "r2": -55815.377305668895
   },
-  "risk_classifier_report": "              precision    recall  f1-score   support\n\n         Low       1.00      0.50      0.67         2\n    Moderate       0.67      1.00      0.80         2\n        High       1.00      1.00      1.00         6\n   Very High       1.00      1.00      1.00         5\n\n    accuracy                           0.93        15\n   macro avg       0.92      0.88      0.87        15\nweighted avg       0.96      0.93      0.93        15\n",
+  "risk_classifier_report": "              precision    recall  f1-score   support\n\n         Low       1.00      1.00      1.00        22\n    Moderate       1.00      1.00      1.00        25\n        High       1.00      0.98      0.99        47\n   Very High       0.98      1.00      0.99        47\n\n    accuracy                           0.99       141\n   macro avg       0.99      0.99      0.99       141\nweighted avg       0.99      0.99      0.99       141\n",
   "confusion_matrix": [
     [
-      1,
-      1,
+      22,
+      0,
       0,
       0
     ],
     [
       0,
-      2,
+      25,
       0,
       0
     ],
     [
       0,
       0,
-      6,
-      0
+      46,
+      1
     ],
     [
       0,
       0,
       0,
-      5
+      47
     ]
   ],
   "risk_label_counts": {
-    "High": 23,
-    "Very High": 19,
-    "Moderate": 9,
-    "Low": 9
+    "High": 188,
+    "Very High": 187,
+    "Moderate": 101,
+    "Low": 87
   }
 }
