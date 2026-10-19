@@ -114,7 +114,7 @@ geo:
 
 # Authentication for Streamlit dashboard (optional)
 auth:
-  enabled: false   # set to true to require login for the Streamlit dashboard
+  enabled: true    # set to true to require login for the Streamlit dashboard
   users:
     admin: "admin123"
     analyst: "water2026"
