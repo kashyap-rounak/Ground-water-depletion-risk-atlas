@@ -24,7 +24,7 @@ from src.geo.geo import normalize_name
 app = FastAPI(
     title="🌍 Groundwater Depletion Risk Atlas API",
     description="REST API for querying historical groundwater levels, SARIMA/XGBoost forecasts, and 4-tier depletion risk classifications across India.",
-    version="1.0.0",
+    version="1.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )

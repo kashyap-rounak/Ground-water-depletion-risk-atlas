@@ -91,17 +91,27 @@ Run tests (includes ETL, ML, API, and Auth suites):
 .venv\Scripts\python -m pytest tests -v
 ```
 
-## 🔐 Optional Dashboard Authentication
+## 🔐 Dashboard Authentication
 
-To password-protect the dashboard, enable authentication in `config.yaml`:
+The dashboard is secured with active login protection. Configured in `config.yaml`:
 ```yaml
 auth:
   enabled: true
   users:
     admin: "admin123"
+    analyst: "water2026"
     viewer: "atlas123"
 ```
-When enabled, users must log in to access the dashboard. When disabled (`enabled: false`), the atlas is open for public access.
+
+### 🔑 Authorized Credentials for Access:
+
+| Role | Username | Password | Access Scope |
+|---|---|---|---|
+| **Admin** | `admin` | `admin123` | Full dashboard access & administrative overview |
+| **Analyst** | `analyst` | `water2026` | Deep-dive hydrology, model performance & SHAP analysis |
+| **Viewer** | `viewer` | `atlas123` | Read-only access to risk map and forecasts |
+
+*(To make the dashboard open without passwords, set `enabled: false` in `config.yaml`).*
 
 ## ☁️ Deployment (Streamlit Community Cloud)
 
