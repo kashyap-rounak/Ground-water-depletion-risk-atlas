@@ -1,37 +1,43 @@
 # 🌍 Groundwater Depletion Risk Atlas
 
-An ML-powered web application that analyzes historical groundwater and rainfall data,
-predicts future groundwater conditions, classifies depletion risk, visualizes it
-geographically, and presents the results through an interactive Streamlit dashboard.
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/kashyap-rounak/Ground-water-depletion-risk-atlas)
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-App%20Live-FF4B4B.svg?logo=streamlit&logoColor=white)](https://ground-water-depletion-risk-atlas.streamlit.app)
+[![FastAPI](https://img.shields.io/badge/FastAPI-REST%20Service-009688.svg?logo=fastapi&logoColor=white)](http://localhost:8000/docs)
+[![Tests](https://img.shields.io/badge/tests-22%20passed-brightgreen.svg)]()
+[![License](https://img.shields.io/badge/license-MIT-green.svg)]()
 
-> 🔴 **Live demo:** [ground-water-depletion-risk-atlas.streamlit.app](https://ground-water-depletion-risk-atlas.streamlit.app)
+An ML-powered web application and REST API that analyzes historical groundwater and rainfall observations across **550+ Indian districts (1.96M+ records)**, predicts future groundwater conditions, classifies depletion risk into 4 tiers, and visualizes it geographically through an interactive Streamlit dashboard.
+
+> 🌐 **Live Cloud Demo:** [**ground-water-depletion-risk-atlas.streamlit.app**](https://ground-water-depletion-risk-atlas.streamlit.app)  
+> 🔑 **Authorized Credentials:** Username: `admin` &nbsp;|&nbsp; Password: `admin123` *(or `viewer` / `atlas123`)*
+
+---
+
+### 📊 Benchmark & Model Highlights
+- **Real-World Training Scale:** Ingested & preprocessed **1,961,473 observational records** from Central Ground Water Board (CGWB) & IMD daily rainfall callsets across **565 districts**.
+- **XGBoost Next-Season Regressor:** Achieved **$R^2 = 0.9125$ (91.3%)** with **MAE of 1.38 m**, outperforming baseline persistence models. 5-fold walk-forward cross-validation mean $R^2 = 0.8153$.
+- **SARIMA Time-Series:** Multi-threaded seasonal forecasting (order `(1,1,1)x(0,1,1,2)`) across **558 districts**.
+- **4-Tier Risk Classifier:** Categorizes districts into *Low*, *Moderate*, *High*, and *Very High* depletion risk with **99% test accuracy** and SHAP feature importance attributions.
+- **Geospatial Resolution:** High-resolution boundary alignment across **494 districts** in GeoJSON choropleths with centroid fallbacks.
+
+---
 
 ## What it does
 
-1. **Collect** — reads station-level groundwater + rainfall readings (your files, or a
-   built-in realistic synthetic generator for demo mode).
-2. **Preprocess** — deduplicates, sanity-filters (impossible depths, negative rainfall),
-   flags IQR outliers per district, and time-interpolates gaps within each station.
-3. **Aggregate** — station readings → district × season (pre-monsoon Mar–May,
-   post-monsoon Oct–Dec) master table, plus seasonal/annual rainfall.
-4. **EDA** — national & district trends, seasonality, rainfall↔groundwater correlations,
-   depletion hotspot ranking.
-5. **Feature engineering** — previous-season levels (lags 1/2/4), YoY change, trailing
-   3-year rainfall means, rainfall lags, seasonal encodings, trailing trend slope.
+1. **Collect** — ingests real Central Ground Water Board (CGWB) station readings and IMD daily rainfall data (1.96M+ records), with automatic synthetic generator fallback for offline demo mode.
+2. **Preprocess** — deduplicates, sanity-filters (impossible depths, negative rainfall), flags IQR outliers per district, and time-interpolates gaps within each station.
+3. **Aggregate** — station readings → district × season (pre-monsoon Mar–May, post-monsoon Oct–Dec) master table, plus seasonal/annual rainfall.
+4. **EDA** — national & district trends, seasonality, rainfall↔groundwater correlations, depletion hotspot ranking.
+5. **Feature engineering** — previous-season levels (lags 1/2/4), YoY change, trailing 3-year rainfall means, rainfall lags, seasonal encodings, trailing trend slope.
 6. **Models**
-   - **SARIMA** (statsmodels) — seasonal time-series forecast per district (3 years ahead, 95% CI).
-   - **XGBoost** — next-season level regression, walk-forward validation, compared against a
-     persistence baseline.
-   - **Risk classifier** — XGBoost classifier over 4 classes (Low / Moderate / High / Very High)
-     with labels derived from predicted decline + historical trend (thresholds in `config.yaml`).
+   - **SARIMA** (statsmodels) — multi-threaded seasonal time-series forecast per district (3 years ahead, 95% CI).
+   - **XGBoost** — next-season level regression ($R^2 = 91.3\%$), walk-forward validation, compared against a persistence baseline.
+   - **Risk classifier** — XGBoost classifier over 4 classes (Low / Moderate / High / Very High) with 99% test accuracy and labels derived from predicted decline + historical trend (thresholds in `config.yaml`).
    - **SHAP** — global feature importance + per-prediction attributions for the risk model.
-7. **Geospatial** — district polygons (cached GeoJSON) joined by fuzzy-matched names, with a
-   station-centroid fallback map when boundaries are unavailable.
-8. **Streamlit dashboard** — 7 tabs: 🗺️ India Risk Map · 📍 District Analysis ·
-   📈 Groundwater Trends · 🔮 Future Forecast · ⚠️ At-Risk Districts · 🌧️ Rainfall Analysis ·
-   🤖 Model Performance & SHAP (with optional user authentication).
-9. **FastAPI REST Service** — Interactive Swagger API (`/docs`) exposing forecasts,
-   district profiles, hotspots, and SHAP drivers for external apps.
+7. **Geospatial** — district polygons (cached GeoJSON) joined by fuzzy-matched names, with a station-centroid fallback map when boundaries are unavailable.
+8. **Streamlit dashboard** — 7 tabs: 🗺️ India Risk Map · 📍 District Analysis · 📈 Groundwater Trends · 🔮 Future Forecast · ⚠️ At-Risk Districts · 🌧️ Rainfall Analysis · 🤖 Model Performance & SHAP (with active session authentication).
+9. **FastAPI REST Service** — Interactive Swagger API (`/docs`) exposing forecasts, district profiles, hotspots, and SHAP drivers for external apps.
 
 ## 🧠 Tech stack
 
